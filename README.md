@@ -1,5 +1,9 @@
 # Attention
 
+Runt tests with `pytest`
+
+Run tests manually with INFO: `INFO=1 python test_compare.py`
+
 ### TODO
 
 - [x] Implement softmax
