@@ -3,7 +3,9 @@ import jax
 import numpy as np
 from jax import random
 from typing import List, Callable
-from utils import logger
+from utils import LOG_LEVEL, get_logger 
+
+logger = get_logger()
 
 key = random.PRNGKey(0)
 N = 2
@@ -16,7 +18,7 @@ def allow_numpy(func: Callable) -> Callable:
             
         result = func(x, *args, **kwargs)
 
-        logger.debug(get_debug_string(func, result))
+        logger.log(LOG_LEVEL, get_debug_string(func, result))
         
         return result
     return wrapper

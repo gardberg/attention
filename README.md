@@ -2,13 +2,15 @@
 
 *Python version:* 3.11.6
 
-Runt tests with `pytest`
+Run tests with `pytest`
 
-Run tests manually with INFO: `INFO=1 python test_compare.py`
+Show logs with `pytest --log-level-cli=25` to show custom logs logged with `logging.log(25, "message")`
+It is also set to `25` by default in `pyproject.toml`.
 
 ### TODO
 
 - [x] Implement softmax
+- [ ] Implement network
 - [ ] Implement vanilla attention
 - [ ] Implement multi headed attention
 - [ ] Add tests to compare with pytorch implementations

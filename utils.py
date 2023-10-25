@@ -1,22 +1,25 @@
 import logging
 
-import os
+LOG_LEVEL = 25
+# LOG_LEVEL = logging.DEBUG
 
-log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
+def get_logger():
+    # Creates a local logger for the file it is called in with __name__
+    # as the name of the logger.
+    logger = logging.getLogger(__name__) 
 
-if log_level not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
-    print("Invalid log level provided. Using INFO as the default.")
-    log_level = "INFO"
+    # set format
+    log_format = "\x1b[35mDEBUG\x1b[0m: %(message)s" 
+    formatter = logging.Formatter(log_format)
+    # create a handler
+    ch = logging.StreamHandler()
+    ch.setLevel(LOG_LEVEL)
+    ch.setFormatter(formatter)
+    # add the handler to the logger
+    logger.addHandler(ch)
 
-# Custom logger
-log_format = "\n%(levelname)s: %(message)s"
-formatter = logging.Formatter(log_format)
+    return logger 
 
-logger = logging.getLogger("custom_logger")
-logger.setLevel(log_level)
-
-handler = logging.StreamHandler()
-handler.setFormatter(formatter)
-
-logger.propagate = False
-logger.addHandler(handler)
+if __name__ == "__main__":
+    logger = get_logger()
+    logger.log(LOG_LEVEL, "Logging working")
