@@ -1,5 +1,9 @@
 # Attention
 
+Exploring attention and related concepts in Jax.
+
+### Setup
+
 *Python version:* 3.11.6
 
 Run tests with `pytest`
@@ -13,10 +17,11 @@ It is also set to `25` by default in `pyproject.toml`.
 - [ ] Implement network
 - [ ] Implement vanilla attention
 - [ ] Implement multi headed attention
-- [ ] Add tests to compare with pytorch implementations
 - [ ] Windowed attention
 - [ ] Windowed attention with recomputation
 - [ ] Streaming LLM attention
+
+- [x] Add tests to compare with pytorch implementations
 
 #### Links
 
