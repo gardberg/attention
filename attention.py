@@ -48,3 +48,7 @@ def softmax_stable(x: jnp.ndarray, dim: int = 1) -> jnp.ndarray:
     maxes = jnp.max(x, axis=dim-2, keepdims=True)
     xm = jnp.exp(x - maxes)
     return xm / jnp.sum(xm, axis=dim-2, keepdims=True)
+
+# pass stateful variables as parameters
+def linear(x: jnp.ndarray, weights: jnp.ndarray, bias: jnp.ndarray) -> jnp.ndarray:
+    return jnp.dot(weights, x) + bias

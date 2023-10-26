@@ -20,6 +20,8 @@ It is also set to `25` by default in `pyproject.toml`.
 
 #### Links
 
+Stateful computation: https://jax.readthedocs.io/en/latest/jax-101/07-state.html
+
 Efficient Streaming Attention: https://arxiv.org/abs/2309.17453
 
 Softmax off by one: https://www.evanmiller.org/attention-is-off-by-one.html

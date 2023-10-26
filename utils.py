@@ -9,7 +9,7 @@ def get_logger():
     logger = logging.getLogger(__name__) 
 
     # set format
-    log_format = "\x1b[35mDEBUG\x1b[0m: %(message)s" 
+    log_format = "\n\x1b[35mDEBUG\x1b[0m: %(message)s" 
     formatter = logging.Formatter(log_format)
     # create a handler
     ch = logging.StreamHandler()
