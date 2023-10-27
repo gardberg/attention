@@ -13,8 +13,6 @@ logger = get_logger()
 np.random.seed(1337)
 
 TOL = 1e-6
-SHAPE = (4, 4)
-x = np.random.randn(*SHAPE)
 
 
 # Compare pytorch linear network to custom implementation
@@ -36,9 +34,7 @@ def test_linear(n_in: int, n_out: int):
     y_jax = linear(jnp.array(x_in), state)
 
     logger.log(LOG_LEVEL, f"Diff: {np.linalg.norm(y_torch - y_jax):.2e}")
-    assert np.allclose(
-        y_torch, y_jax, atol=TOL
-    ), f"y_torch = {y_torch}, y = {y_jax}"
+    assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
 
 
 def test_linear_square():
@@ -60,22 +56,24 @@ def test_linear_square():
     state = LinearState(jnp.array(w), jnp.array(b))
     y_jax = linear(jnp.array(x_in.flatten()), state)
     logger.log(LOG_LEVEL, f"Diff: {np.linalg.norm(y_torch - y_jax):.2e}")
-    assert np.allclose(
-        y_torch, y_jax, atol=TOL
-    ), f"y_torch = {y_torch}, y = {y_jax}"
+    assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
 
 
-def test_softmax():
-    y_torch = torch.softmax(torch.from_numpy(x), dim=1).numpy()
-    y = jax.device_get(softmax(x, dim=1))
+@pytest.mark.parametrize("shape", [(4, 4)])
+def test_softmax(shape: Tuple[int, ...]):
+    x = torch.randn(shape)
+    y_torch = torch.softmax(x, dim=1).numpy()
+    y = jax.device_get(softmax(jnp.array(x), dim=1))
 
     logger.log(LOG_LEVEL, f"Diff: {np.linalg.norm(y_torch - y):.2e}")
     assert np.allclose(y, y_torch, atol=TOL), f"y = {y}, y_torch = {y_torch}"
 
 
-def test_softmax_stable():
-    y_torch = torch.softmax(torch.from_numpy(x), dim=1).numpy()
-    y = jax.device_get(softmax_stable(x, dim=1))
+@pytest.mark.parametrize("shape", [(4, 4)])
+def test_softmax_stable(shape: Tuple[int, ...]):
+    x = torch.randn(shape)
+    y_torch = torch.softmax(x, dim=1).numpy()
+    y = jax.device_get(softmax_stable(jnp.array(x), dim=1))
 
     logger.log(LOG_LEVEL, f"Diff: {np.linalg.norm(y_torch - y):.2e}")
     assert np.allclose(y, y_torch, atol=TOL), f"y = {y}, y_torch = {y_torch}"
@@ -89,20 +87,53 @@ def test_relu(shape: Tuple[int, ...]):
 
     logger.log(LOG_LEVEL, f"Diff: {np.linalg.norm(y_torch - y):.2e}")
     assert np.allclose(y, y_torch, atol=TOL), f"y = {y}, y_torch = {y_torch}"
-    
 
-def test_batchnorm_1d_inference():
-    x = torch.randn(1, 2, 2)
-    torch_bn = torch.nn.BatchNorm1d(2)
+
+@pytest.mark.parametrize("B, N", [(1, 2), (2, 1), (2, 3)])
+def test_batchnorm_1d_inference_small(B: int, N: int):
+    x = torch.randn(B, N)
+    torch_bn = torch.nn.BatchNorm1d(N)
+    torch_bn.eval()
+    
+    with torch.no_grad():
+        y_torch = torch_bn(x).numpy()
+        
+    # Jax
+    state = BatchNormState()
+    y, _state = batchnorm_1d(jnp.array(x), state, training=False)
+    
+    logger.log(LOG_LEVEL, f"Diff: {np.linalg.norm(y_torch - y):.2e}")
+    assert np.allclose(y, y_torch, atol=TOL), f"y = {y}, y_torch = {y_torch}"
+
+ 
+@pytest.mark.parametrize("B, N, L", [(1, 2, 2), (2, 2, 2), (1, 1, 1)])
+def test_batchnorm_1d_inference(B: int, N: int, L: int):
+    x = torch.randn(B, N, L)
+    torch_bn = torch.nn.BatchNorm1d(N)
     torch_bn.eval()
 
     with torch.no_grad():
         y_torch = torch_bn(x).numpy()
-    
+
     # Jax
     state = BatchNormState()
     y, _state = batchnorm_1d(jnp.array(x), state, training=False)
 
-    logger.log(LOG_LEVEL, f"y_torch = {y_torch}, y = {y}")
+    logger.log(LOG_LEVEL, f"Diff: {np.linalg.norm(y_torch - y):.2e}")
     assert np.allclose(y, y_torch, atol=TOL), f"y = {y}, y_torch = {y_torch}"
-    
+
+
+@pytest.mark.parametrize("B, N", [(2, 2), (2, 1), (2, 3)])
+def test_batchnorm_1d_train(B: int, N: int):
+    x = torch.randn(B, N)
+    torch_bn = torch.nn.BatchNorm1d(N)
+
+    with torch.no_grad():
+        y_torch = torch_bn(x).numpy()
+
+    # Jax
+    state = BatchNormState()
+    y, _state = batchnorm_1d(jnp.array(x), state, training=True)
+
+    logger.log(LOG_LEVEL, f"Diff: {np.linalg.norm(y_torch - y):.2e}")
+    assert np.allclose(y, y_torch, atol=TOL), f"y = {y}, y_torch = {y_torch}"

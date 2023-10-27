@@ -17,7 +17,7 @@ def allow_numpy(func: Callable) -> Callable:
 
         result = func(x, *args, **kwargs)
 
-        logger.log(LOG_LEVEL, get_debug_string(func, result))
+        # logger.log(LOG_LEVEL, get_debug_string(func, result))
 
         return result
 
@@ -29,21 +29,18 @@ def get_debug_string(f: Callable, result: jnp.ndarray):
 
 
 # Naive
-@allow_numpy
 def softmax(x: jnp.ndarray, dim: int = 1) -> jnp.ndarray:
     xe = jnp.exp(x)
     return xe / jnp.sum(xe, axis=dim - 2, keepdims=True)
 
 
 # Off by one
-@allow_numpy
 def softmax_one(x: jnp.ndarray, dim: int = 1) -> jnp.ndarray:
     xe = jnp.exp(x)
     return xe / (jnp.sum(xe, axis=dim - 2, keepdims=True) + 1)
 
 
 # Stable
-@allow_numpy
 def softmax_stable(x: jnp.ndarray, dim: int = 1) -> jnp.ndarray:
     maxes = jnp.max(x, axis=dim - 2, keepdims=True)
     xm = jnp.exp(x - maxes)
@@ -73,20 +70,16 @@ def relu(x: jnp.ndarray) -> jnp.ndarray:
 
 
 class BatchNormState(NamedTuple):
-    """
-    :param
-    """
-
+    # TODO: make into nested dict?
     mean: jnp.ndarray = 0
     var: jnp.ndarray = 1
     gamma: jnp.ndarray = 1
     beta: jnp.ndarray = 0
     momentum: jnp.float32 = 0.1
-    eps: jnp.float32 = 1e-5
 
 
 def batchnorm_1d(
-    x: jnp.ndarray, state: BatchNormState, training: bool = True
+    x: jnp.ndarray, state: BatchNormState, training: bool = True, eps=1e-5
 ) -> Tuple[jnp.ndarray, BatchNormState]:
     """
     :param jnp.ndarray x:           (B, N) or (B, N, L), B batch size, N input dim, L input length
@@ -99,13 +92,23 @@ def batchnorm_1d(
         mean = jnp.mean(x, axis=0)
         var = jnp.var(x, axis=0)  # ddof = 0, biased
 
-        state.mean = (1 - state.momentum) * state.mean + state.momentum * mean
-        state.var = (1 - state.momentum) * state.var + state.momentum * jnp.var(
+        # update state.mean and state.var via jax.tree_map instead
+        new_mean = (1 - state.momentum) * state.mean + state.momentum * mean
+        new_var = (1 - state.momentum) * state.var + state.momentum * jnp.var(
             x, axis=0, ddof=1
-        )  # unbiased
+        ) 
 
-        x_norm = (x - mean) / jnp.sqrt(var + state.eps)
+        x_norm = (x - mean) / jnp.sqrt(var + eps)
     else:
-        x_norm = (x - state.mean) / jnp.sqrt(state.var + state.eps)
+        x_norm = (x - state.mean) / jnp.sqrt(state.var + eps)
 
-    return state.gamma * x_norm + state.beta, state
+    # TODO: Update state with jax.tree_map instead?
+    new_state = BatchNormState(
+            mean=new_mean if training else state.mean,
+            var=new_var if training else state.var,
+            gamma=state.gamma,
+            beta=state.beta,
+            momentum=state.momentum,
+        )
+
+    return state.gamma * x_norm + state.beta, new_state
