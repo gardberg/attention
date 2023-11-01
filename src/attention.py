@@ -10,10 +10,6 @@ logger = get_logger()
 rng = random.PRNGKey(0)
 
 
-def get_debug_string(f: Callable, result: jax.Array):
-    return f"{f.__name__}:\n{result}\nSum: {jnp.sum(result, axis=-1)}"
-
-
 # Naive
 def softmax(x: jax.Array, dim: int = 1) -> jax.Array:
     xe = jnp.exp(x)
