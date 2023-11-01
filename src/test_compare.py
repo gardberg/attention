@@ -11,13 +11,14 @@ from typing import Tuple
 logger = get_logger()
 
 np.random.seed(1337)
+rng = jax.random.PRNGKey(0)
 
 TOL = 1e-6
 
 
 # Compare pytorch linear network to custom implementation
 @pytest.mark.parametrize("n_in, n_out", [(1, 1), (4, 1), (1, 4), (4, 4)])
-def test_linear(n_in: int, n_out: int):
+def test_dense(n_in: int, n_out: int):
     x_in = torch.randn(n_in)
     w = torch.randn(n_out, n_in)
     b = torch.randn(n_out)
@@ -30,14 +31,39 @@ def test_linear(n_in: int, n_out: int):
         y_torch = torch_linear(x_in).numpy()
 
     # Jax
-    state = LinearState(jnp.array(w), jnp.array(b))
-    y_jax = linear(jnp.array(x_in), state)
+    dense = Dense(n_in, n_out)
+    state = DenseState(jnp.array(w), jnp.array(b))
+    y_jax = dense(jnp.array(x_in), state)
 
     logger.log(LOG_LEVEL, f"Diff: {np.linalg.norm(y_torch - y_jax):.2e}")
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
 
 
-def test_linear_square():
+@pytest.mark.parametrize("n_in, n_out, batch_size", [(1, 1, 1), (4, 4, 4)])
+def test_dense_batch(n_in, n_out, batch_size):
+    x_in = torch.randn(batch_size, n_in)
+    logger.log(LOG_LEVEL, f"x_in: {x_in.shape}")
+    w = torch.randn(n_out, n_in)
+    b = torch.randn(n_out)
+
+    torch_linear = torch.nn.Linear(n_in, n_out)
+    torch_linear.weight = torch.nn.Parameter(w)
+    torch_linear.bias = torch.nn.Parameter(b)
+
+    with torch.no_grad():
+        y_torch = torch_linear(x_in).numpy()
+
+    # Jax
+    dense = Dense(n_in, n_out)
+    state = DenseState(jnp.array(w), jnp.array(b))
+    y_jax = dense(jnp.array(x_in), state)
+    logger.log(LOG_LEVEL, f"y_jax: {y_jax.shape}")
+
+    logger.log(LOG_LEVEL, f"Diff: {np.linalg.norm(y_torch - y_jax):.2e}")
+    assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
+
+
+def test_dense_square():
     n_in = (4, 4)
     n_out = 1
 
@@ -53,8 +79,10 @@ def test_linear_square():
         y_torch = torch_linear(x_in.flatten()).numpy()
 
     # Jax
-    state = LinearState(jnp.array(w), jnp.array(b))
-    y_jax = linear(jnp.array(x_in.flatten()), state)
+    dense = Dense(n_in, n_out)
+    state = DenseState(jnp.array(w), jnp.array(b))
+    y_jax = dense(jnp.array(x_in.flatten()), state)
+
     logger.log(LOG_LEVEL, f"Diff: {np.linalg.norm(y_torch - y_jax):.2e}")
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
 
@@ -94,18 +122,18 @@ def test_batchnorm_1d_inference_small(B: int, N: int):
     x = torch.randn(B, N)
     torch_bn = torch.nn.BatchNorm1d(N)
     torch_bn.eval()
-    
+
     with torch.no_grad():
         y_torch = torch_bn(x).numpy()
-        
+
     # Jax
     state = BatchNormState()
     y, _state = batchnorm_1d(jnp.array(x), state, training=False)
-    
+
     logger.log(LOG_LEVEL, f"Diff: {np.linalg.norm(y_torch - y):.2e}")
     assert np.allclose(y, y_torch, atol=TOL), f"y = {y}, y_torch = {y_torch}"
 
- 
+
 @pytest.mark.parametrize("B, N, L", [(1, 2, 2), (2, 2, 2), (1, 1, 1)])
 def test_batchnorm_1d_inference(B: int, N: int, L: int):
     x = torch.randn(B, N, L)

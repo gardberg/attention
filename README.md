@@ -26,6 +26,8 @@ It is also set to `25` by default in `pyproject.toml`.
 
 #### Links
 
+Tree Map: https://jax.readthedocs.io/en/latest/jax-101/05.1-pytrees.html
+
 Stateful computation: https://jax.readthedocs.io/en/latest/jax-101/07-state.html
 
 Efficient Streaming Attention: https://arxiv.org/abs/2309.17453
