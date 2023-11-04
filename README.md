@@ -11,6 +11,8 @@ Run tests with `pytest`
 Show logs with `pytest --log-level-cli=25` to show custom logs logged with `logger.log(25, "message")`
 It is also set to `25` by default in `pyproject.toml`.
 
+Filter for a specific test to run with `pytest -k test_name`
+
 ### TODO
 
 - [x] Implement softmax

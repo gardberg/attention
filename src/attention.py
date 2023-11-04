@@ -48,7 +48,7 @@ class Dense:
         return DenseState(w, b)
 
     def __call__(self, x: jax.Array, state: DenseState) -> jax.Array:
-        # Batch is x has a batch dim
+        # Batch if x has a batch dim
         if x.ndim > 2:
             raise ValueError(f"Input dim must be 1 or 2, got {x.ndim}")
         elif x.ndim == 2:
