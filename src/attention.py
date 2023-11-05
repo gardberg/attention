@@ -39,7 +39,7 @@ class Dense:
         # Setting network shape optional since an arbitrary state can be passed via call
         self.n_in = n_in
         self.n_out = n_out
-        self.call_batch_fn = vmap(self.forward, in_axes=(0, None))
+        self.call_batch_fn = vmap(self.forward, in_axes=(None, 0))
 
     def init_state(self, rng: jax.Array, scale=1e-2) -> DenseState:
         w_key, b_key = random.split(rng)
@@ -47,16 +47,16 @@ class Dense:
         b = scale * random.normal(b_key, (self.n_out,))
         return DenseState(w, b)
 
-    def __call__(self, x: jax.Array, state: DenseState) -> jax.Array:
+    def __call__(self, state: DenseState, x: jax.Array) -> jax.Array:
         # Batch if x has a batch dim
         if x.ndim > 2:
             raise ValueError(f"Input dim must be 1 or 2, got {x.ndim}")
         elif x.ndim == 2:
-            return self.call_batch_fn(x, state)
+            return self.call_batch_fn(state, x)
         else:
-            return self.forward(x, state)
+            return self.forward(state, x)
 
-    def forward(self, x: jax.Array, state: DenseState) -> jax.Array:
+    def forward(self, state: DenseState, x: jax.Array) -> jax.Array:
         # Linear forward pass of non-batched input
         return jnp.dot(state.weights, x) + state.bias
 

@@ -32,7 +32,7 @@ def test_dense(n_in: int, n_out: int):
     # Jax
     dense = Dense(n_in, n_out)
     state = DenseState(jnp.array(w), jnp.array(b))
-    y_jax = dense(jnp.array(x_in), state)
+    y_jax = dense(state, jnp.array(x_in))
 
     logger.log(LOG_LEVEL, f"Diff: {np.linalg.norm(y_torch - y_jax):.2e}")
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
@@ -55,7 +55,7 @@ def test_dense_batch(n_in, n_out, batch_size):
     # Jax
     dense = Dense(n_in, n_out)
     state = DenseState(jnp.array(w), jnp.array(b))
-    y_jax = dense(jnp.array(x_in), state)
+    y_jax = dense(state, jnp.array(x_in))
     logger.log(LOG_LEVEL, f"y_jax: {y_jax.shape}")
 
     logger.log(LOG_LEVEL, f"Diff: {np.linalg.norm(y_torch - y_jax):.2e}")
@@ -80,7 +80,7 @@ def test_dense_square():
     # Jax
     dense = Dense(n_in, n_out)
     state = DenseState(jnp.array(w), jnp.array(b))
-    y_jax = dense(jnp.array(x_in.flatten()), state)
+    y_jax = dense(state, jnp.array(x_in.flatten()))
 
     logger.log(LOG_LEVEL, f"Diff: {np.linalg.norm(y_torch - y_jax):.2e}")
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
