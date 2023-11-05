@@ -28,6 +28,10 @@ def softmax_stable(x: jax.Array, dim: int = 1) -> jax.Array:
     xm = jnp.exp(x - maxes)
     return xm / jnp.sum(xm, axis=dim - 2, keepdims=True)
 
+    
+def sigmoid(x: jax.Array) -> jax.Array:
+    return 1 / (1 + jnp.exp(-x))
+
 
 class DenseState(NamedTuple):
     weights: jax.Array

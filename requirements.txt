@@ -3,3 +3,5 @@ jaxlib
 matplotlib
 torch
 pytest
+scikit-learn
+jupyter
