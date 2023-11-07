@@ -2,6 +2,11 @@
 
 Exploring attention and related concepts in Jax.
 
+See `example.ipynb` for a simple network training example.
+
+
+<img src="decision_boundary.gif" width="600" height="360" />
+
 ### Setup
 
 *Python version:* 3.11.6
@@ -37,3 +42,5 @@ Efficient Streaming Attention: https://arxiv.org/abs/2309.17453
 Softmax off by one: https://www.evanmiller.org/attention-is-off-by-one.html
 
 ML Library in Jax: https://flax.readthedocs.io/en/latest/
+
+NN Example: https://jax.readthedocs.io/en/latest/notebooks/Neural_Network_and_Data_Loading.html
