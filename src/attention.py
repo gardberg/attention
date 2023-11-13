@@ -28,7 +28,7 @@ def softmax_stable(x: jax.Array, dim: int = 1) -> jax.Array:
     xm = jnp.exp(x - maxes)
     return xm / jnp.sum(xm, axis=dim - 2, keepdims=True)
 
-    
+
 def sigmoid(x: jax.Array) -> jax.Array:
     return 1 / (1 + jnp.exp(-x))
 
@@ -63,6 +63,39 @@ class Dense:
     def forward(self, state: DenseState, x: jax.Array) -> jax.Array:
         # Linear forward pass of non-batched input
         return jnp.dot(state.weights, x) + state.bias
+
+
+class SelfAttentionState(NamedTuple):
+    W_q: jax.Array
+    W_k: jax.Array
+    W_v: jax.Array
+
+
+class SelfAttention:
+    """
+    Non-matrix version of self-attention, i.e. assumes the input to be a sequence of vectors of size (emb_size).
+
+    input: (context_len, emb_size)
+    """
+
+    def __init__(self, emb_size=32, d_k=32):
+        self.emb_size = emb_size  # Size of each word embedding
+        self.d_k = d_k  # Size of each key/query/value vector
+
+    def init_state(self, rng: jax.Array) -> SelfAttentionState:
+        keys = random.split(rng, 3)
+
+        W_q = random.normal(keys[0], (self.emb_size, self.d_k))
+        W_k = random.normal(keys[1], (self.emb_size, self.d_k))
+        W_v = random.normal(keys[2], (self.emb_size, self.d_k))
+
+        return SelfAttentionState(W_q, W_k, W_v)
+
+    def __call__(self, state: SelfAttentionState, x: jax.Array) -> jax.Array:
+        q = jnp.dot(x, state.W_q)
+        k = jnp.dot(x, state.W_k)
+        v = jnp.dot(x, state.W_v)
+        return softmax(jnp.dot(q, k.T) / jnp.sqrt(self.d_k)) @ v
 
 
 def relu(x: jax.Array) -> jax.Array:

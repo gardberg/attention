@@ -44,3 +44,9 @@ Softmax off by one: https://www.evanmiller.org/attention-is-off-by-one.html
 ML Library in Jax: https://flax.readthedocs.io/en/latest/
 
 NN Example: https://jax.readthedocs.io/en/latest/notebooks/Neural_Network_and_Data_Loading.html
+
+Illustrated transformer: https://jalammar.github.io/illustrated-transformer/
+
+Annotated transformer: https://nlp.seas.harvard.edu/2018/04/03/attention.html
+
+Pytorch implementation https://github.com/pytorch/pytorch/blob/main/torch/nn/functional.py#L5101
