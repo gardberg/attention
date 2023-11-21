@@ -50,3 +50,10 @@ Illustrated transformer: https://jalammar.github.io/illustrated-transformer/
 Annotated transformer: https://nlp.seas.harvard.edu/2018/04/03/attention.html
 
 Pytorch implementation https://github.com/pytorch/pytorch/blob/main/torch/nn/functional.py#L5101
+
+https://nn.labml.ai/transformers/mha.html
+
+Oklart varför attention beräkningen är annorlunda... Får test som failar med 1d.
+
+Känns som att det borde vara ngn bias?? Kan väl inte vara fel dim som summeras över?
+Är det en extra vikt som används ngnstans? W_o? Oklart

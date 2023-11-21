@@ -11,22 +11,22 @@ rng = random.PRNGKey(0)
 
 
 # Naive
-def softmax(x: jax.Array, dim: int = 1) -> jax.Array:
+def softmax(x: jax.Array, dim: int) -> jax.Array:
     xe = jnp.exp(x)
-    return xe / jnp.sum(xe, axis=dim - 2, keepdims=True)
+    return xe / jnp.sum(xe, axis=dim, keepdims=True)
 
 
 # Off by one
-def softmax_one(x: jax.Array, dim: int = 1) -> jax.Array:
+def softmax_one(x: jax.Array, dim: int) -> jax.Array:
     xe = jnp.exp(x)
-    return xe / (jnp.sum(xe, axis=dim - 2, keepdims=True) + 1)
+    return xe / (jnp.sum(xe, axis=dim, keepdims=True) + 1)
 
 
 # Stable
-def softmax_stable(x: jax.Array, dim: int = 1) -> jax.Array:
-    maxes = jnp.max(x, axis=dim - 2, keepdims=True)
+def softmax_stable(x: jax.Array, dim: int) -> jax.Array:
+    maxes = jnp.max(x, axis=dim, keepdims=True)
     xm = jnp.exp(x - maxes)
-    return xm / jnp.sum(xm, axis=dim - 2, keepdims=True)
+    return xm / jnp.sum(xm, axis=dim, keepdims=True)
 
 
 def sigmoid(x: jax.Array) -> jax.Array:
@@ -39,32 +39,68 @@ class DenseState(NamedTuple):
 
 
 class Dense:
-    def __init__(self, n_in: int = None, n_out: int = None):
-        # Setting network shape optional since an arbitrary state can be passed via call
+    def __init__(self, n_in: int = None, n_out: int = None, bias: bool = True):
         self.n_in = n_in
         self.n_out = n_out
-        self.call_batch_fn = vmap(self.forward, in_axes=(None, 0))
+        self.bias = bias
 
     def init_state(self, rng: jax.Array, scale=1e-2) -> DenseState:
         w_key, b_key = random.split(rng)
         w = scale * random.normal(w_key, (self.n_out, self.n_in))
-        b = scale * random.normal(b_key, (self.n_out,))
+        b = scale * random.normal(b_key, (self.n_out,)) if self.bias else None
         return DenseState(w, b)
 
     def __call__(self, state: DenseState, x: jax.Array) -> jax.Array:
+        # Assume x.shape: (batch_size, n_in) or (n_in)
+
         # Batch if x has a batch dim
         if x.ndim > 2:
             raise ValueError(f"Input dim must be 1 or 2, got {x.ndim}")
         elif x.ndim == 2:
-            return self.call_batch_fn(state, x)
+            return jax.vmap(self.forward, in_axes=(None, 0))(state, x)
         else:
             return self.forward(state, x)
 
     def forward(self, state: DenseState, x: jax.Array) -> jax.Array:
         # Linear forward pass of non-batched input
-        return jnp.dot(state.weights, x) + state.bias
+        # dot = jnp.dot(x, state.weights)
+        dot = jnp.matmul(x, state.weights.T)
+        return dot + state.bias if self.bias else dot
 
 
+class PreAttention:
+    def __init__(
+        self, emb_size: int, n_heads: int, d_k: int = None, bias: bool = False
+    ):
+        self.n_heads = n_heads
+        self.d_k = emb_size if d_k is None else d_k
+
+        self.dense = Dense(emb_size, n_heads * self.d_k, bias=bias)
+
+    # Assume weight matrix comes form SelfAttentionState
+    def forward(self, state: DenseState, x: jax.Array) -> jax.Array:
+        # x.shape: (context_len, batch_size, emd_size)
+        head_shape = x.shape[:-1]
+
+        # jnp dot along emb_size dim
+        x = self.dense(state, x)
+
+        x = x.reshape((*head_shape, self.n_heads, self.d_k))
+        return x
+
+    def __call__(self, weight_matrix: jax.Array, x: jax.Array) -> jax.Array:
+        # Batch batch_dim of x.shape: (seq_len, batch_size, emd_size)
+        if x.ndim > 3:
+            raise ValueError(f"Input dim must be 2 or 3, got {x.ndim}")
+        elif x.ndim == 3:
+            # map forward over batch_dim
+            x = jax.vmap(self.forward, in_axes=(None, 1), out_axes=1)(weight_matrix, x)
+            return x
+        else:
+            return self.forward(weight_matrix, x)
+
+
+# TODO: Use PreAttention
 class SelfAttentionState(NamedTuple):
     W_q: jax.Array
     W_k: jax.Array
@@ -75,12 +111,15 @@ class SelfAttention:
     """
     Non-matrix version of self-attention, i.e. assumes the input to be a sequence of vectors of size (emb_size).
 
-    input: (context_len, emb_size)
+    input: (context_len, emb_size) or (context_len, batch_size, emb_size)
     """
 
-    def __init__(self, emb_size=32, d_k=32):
-        self.emb_size = emb_size  # Size of each word embedding
-        self.d_k = d_k  # Size of each key/query/value vector
+    def __init__(self, emb_size, d_k=None):
+        # Size of each word embedding
+        self.emb_size = emb_size
+
+        # Size of each key/query/value vector
+        self.d_k = emb_size if d_k is None else d_k
 
     def init_state(self, rng: jax.Array) -> SelfAttentionState:
         keys = random.split(rng, 3)
@@ -92,10 +131,16 @@ class SelfAttention:
         return SelfAttentionState(W_q, W_k, W_v)
 
     def __call__(self, state: SelfAttentionState, x: jax.Array) -> jax.Array:
+        # TODO: Make batch dim work
+
         q = jnp.dot(x, state.W_q)
         k = jnp.dot(x, state.W_k)
         v = jnp.dot(x, state.W_v)
-        return softmax(jnp.dot(q, k.T) / jnp.sqrt(self.d_k)) @ v
+        return self._attention(q, k, v)
+
+    def _attention(self, q: jax.Array, k: jax.Array, v: jax.Array) -> jax.Array:
+        # Sum along sequence axis (context_len)
+        return softmax(jnp.dot(q, k.T) / jnp.sqrt(self.d_k), dim=1) @ v
 
 
 def relu(x: jax.Array) -> jax.Array:
