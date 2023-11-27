@@ -118,8 +118,11 @@ class Dense:
 
 
 class PreAttention:
+    """
+    Dense layer transforming input to query, key or value
+    """
     def __init__(
-        self, emb_size: int, n_heads: int, d_k: int = None, bias: bool = False
+        self, n_heads: int, emb_size: int, d_k: int = None, bias: bool = False
     ):
         self.n_heads = n_heads
         self.d_k = emb_size if d_k is None else d_k
@@ -127,12 +130,15 @@ class PreAttention:
         self.dense = Dense(emb_size, n_heads * self.d_k, bias=bias)
 
     def forward(self, state: DenseState, x: jax.Array) -> jax.Array:
-        # x.shape: (context_len, batch_size, emd_size)
-        head_shape = x.shape[:-1]
+        # x.shape: (context_len, batch_size, emb_size)
+        # returns: q, k, or v of shape (context_len, batch_size, n_heads, d_k)
 
-        # jnp dot along emb_size dim
+        # hej jag heter
+
         x = self.dense(state, x)
 
+        head_shape = x.shape[:-1]
+        # split the embedding size by the number of heads
         x = x.reshape((*head_shape, self.n_heads, self.d_k))
         return x
 
@@ -151,97 +157,83 @@ class PreAttention:
             return self.forward(weight_matrix, x)
 
 
-class MultiHeadAttentionState:
-    W_q: DenseState
-    W_k: DenseState
-    W_v: DenseState
-    W_o: DenseState
+class MultiHeadAttentionState(NamedTuple):
+    query_state: DenseState
+    key_state: DenseState
+    value_state: DenseState
+    output_state: DenseState
     
     
 class MultiHeadAttention:
+    """
+    Attention with n_heads heads
+    """
     # Softmax along time / context length dimension
     
-    def __init__(self, emb_size: int, n_heads: int, bias: bool = False):
+    def __init__(self, n_heads: int, emb_size: int, bias: bool = False):
         self.n_heads = n_heads
-        # Features per head
+        # Features per head (head dim)
         self.d_k = emb_size // n_heads
 
-        self.query = PreAttention(emb_size, n_heads, d_k=self.d_k, bias=bias)
-        self.key = PreAttention(emb_size, n_heads, d_k=self.d_k, bias=bias)
-        self.value = PreAttention(emb_size, n_heads, d_k=self.d_k, bias=True) # Why bias here?
+        self.query_fn = PreAttention(n_heads, emb_size, d_k=self.d_k, bias=bias)
+        self.key_fn = PreAttention(n_heads, emb_size, d_k=self.d_k, bias=bias)
+        self.value_fn = PreAttention(n_heads, emb_size, d_k=self.d_k, bias=True) # Why bias here?
         
-        self.out = Dense(emb_size, emb_size)
+        self.out = Dense(emb_size, emb_size, bias=False)
+
+        self.saved_steps = {}
         
     def init_state(self, rng: jax.Array) -> MultiHeadAttentionState:
         rngs = random.split(rng, 4)
         return MultiHeadAttentionState(
-            self.query.init_state(rngs[0]),
-            self.key.init_state(rngs[1]),
-            self.value.init_state(rngs[2]),
-            self.out.init_state(rngs[3]),
+            self.query_fn.init_state(rngs[0]),
+            self.key_fn.init_state(rngs[1]),
+            self.value_fn.init_state(rngs[2]),
+            self.out.init_state(rngs[3])
         )
 
     def forward(self, state: MultiHeadAttentionState, q: jax.Array, k: jax.Array, v: jax.Array) -> jax.Array:
         # TODO: Add masking
-        # x.shape: (context_len, batch_size, emb_size)
-        
-        query = self.query(state.W_q, q)
-        key = self.key(state.W_k, k)
-        value = self.value(state.W_v, v)
-        
-        # calc q * k^T = s with shape (context_len, context_len, batch_size, n_heads)
-        s = jnp.matmul(query, key.transpose((0, 2, 1, 3))) * (1 / jnp.sqrt(self.d_k))
-        assert s.shape == (q.shape[0], k.shape[0], q.shape[1], self.n_heads)
+        # q, k, v shape: (context_len, batch_size, emb_size)
+        print(f"q.shape = {q.shape}, k.shape = {k.shape}, v.shape = {v.shape}")
+        self.saved_steps["input_query"] = q
 
-        attn = jnp.matmul(softmax(s, dim=1), value)
+        context_len, batch_size, emb_size = q.shape
+        
+        query = self.query_fn(state.query_state, q)
+        key = self.key_fn(state.key_state, k)
+        value = self.value_fn(state.value_state, v)
+
+        self.saved_steps["transformed_query"] = query
+
+        # shape: (context_len, batch_size, n_heads, d_k)
+
+        print("# Shapes after linear transform and split into heads")
+        print(f"query.shape = {query.shape}, key.shape = {key.shape}, value.shape = {value.shape}")
+        
+        # calc q * k^T = s with shape (contex_len, context_len, batch_size, n_heads)
+
+        # scores = jnp.matmul(query, key.transpose((0, 1, 3, 2)))
+        self.saved_steps['scores'] = scores
+        assert scores.shape == (context_len, context_len, batch_size, self.n_heads), f"Expected shape {(context_len, context_len, batch_size, self.n_heads)}, got {scores.shape}"
+
+        scores *= (1 / jnp.sqrt(self.d_k))
+        self.saved_steps['scaled_scores'] = scores
+
+        print(f"q * k^T = s.shape = {scores.shape}")
+
+        s2 = softmax(scores, dim=-1) 
+        self.saved_steps['softmax'] = s2
+
+        print(f"Softmax attn.shape = {s2.shape}")
+        return s2
+        attn = jnp.matmul(s2, value)
+        print(f"*v shape = {attn.shape}")
         
         # concat heads
-        attn = attn.transpose((0, 2, 1, 3)).reshape((q.shape[0], q.shape[1], -1))
-        
-        return self.out(state.W_o, attn)
-
-
-# TODO: Use PreAttention
-class SelfAttentionState(NamedTuple):
-    W_q: jax.Array
-    W_k: jax.Array
-    W_v: jax.Array
-
-
-class SelfAttention:
-    """
-    Non-matrix version of self-attention, i.e. assumes the input to be a sequence of vectors of size (emb_size).
-
-    input: (context_len, emb_size) or (context_len, batch_size, emb_size)
-    """
-
-    def __init__(self, emb_size, d_k=None):
-        # Size of each word embedding
-        self.emb_size = emb_size
-
-        # Size of each key/query/value vector
-        self.d_k = emb_size if d_k is None else d_k
-
-    def init_state(self, rng: jax.Array) -> SelfAttentionState:
-        keys = random.split(rng, 3)
-
-        W_q = random.normal(keys[0], (self.emb_size, self.d_k))
-        W_k = random.normal(keys[1], (self.emb_size, self.d_k))
-        W_v = random.normal(keys[2], (self.emb_size, self.d_k))
-
-        return SelfAttentionState(W_q, W_k, W_v)
-
-    def __call__(self, state: SelfAttentionState, x: jax.Array) -> jax.Array:
-        # TODO: Make batch dim work
-
-        q = jnp.dot(x, state.W_q)
-        k = jnp.dot(x, state.W_k)
-        v = jnp.dot(x, state.W_v)
-        return self._attention(q, k, v)
-
-    def _attention(self, q: jax.Array, k: jax.Array, v: jax.Array) -> jax.Array:
-        # Sum along sequence axis (context_len)
-        return softmax(jnp.dot(q, k.T) / jnp.sqrt(self.d_k), dim=1) @ v
-
-
+        attn = attn.transpose((0, 2, 1, 3)).reshape((context_len, batch_size, -1))
+        print(f"After reshape: x.shape = {attn.shape}")
+        out = self.out(state.W_o, attn)
+        print(f"out.shape = {out.shape}")
+        return out
 

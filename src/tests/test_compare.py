@@ -210,7 +210,7 @@ def test_pre_attention(emb_size, n_heads, use_bias):
     bias = jnp.array(linear.bias.detach()) if use_bias else None
     state = DenseState(weight, bias)
 
-    preattn = PreAttention(emb_size=emb_size, n_heads=n_heads, d_k=d_k, bias=use_bias)
+    preattn = PreAttention(n_heads=n_heads, emb_size=emb_size, d_k=d_k, bias=use_bias)
     y_jax = preattn(state, jnp.array(x))
 
     logger.log(

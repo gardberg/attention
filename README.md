@@ -5,7 +5,7 @@ Exploring attention and related concepts in Jax.
 See `example.ipynb` for a simple network training example.
 
 
-<img src="decision_boundary.gif" width="600" height="360" />
+<img src="images/decision_boundary.gif" width="600" height="360" />
 
 ### Setup
 
@@ -51,7 +51,11 @@ Annotated transformer: https://nlp.seas.harvard.edu/2018/04/03/attention.html
 
 Pytorch implementation https://github.com/pytorch/pytorch/blob/main/torch/nn/functional.py#L5101
 
-https://nn.labml.ai/transformers/mha.html
+Annotated pytorch implementation https://nn.labml.ai/transformers/mha.html
+
+Attention explained https://storrs.io/attention/
+
+https://math.stackexchange.com/questions/63074/is-there-a-3-dimensional-matrix-by-matrix-product
 
 Oklart varför attention beräkningen är annorlunda... Får test som failar med 1d.
 
