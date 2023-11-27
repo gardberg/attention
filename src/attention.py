@@ -214,6 +214,8 @@ class MultiHeadAttention:
         # calc q * k^T = s with shape (contex_len, context_len, batch_size, n_heads)
 
         # scores = jnp.matmul(query, key.transpose((0, 1, 3, 2)))
+        # scores = jnp.einsum("...id,...jd->...ij", query, key)
+        scores = jnp.einsum("cbhd,Cbhd->cCbh", query, key)
         self.saved_steps['scores'] = scores
         assert scores.shape == (context_len, context_len, batch_size, self.n_heads), f"Expected shape {(context_len, context_len, batch_size, self.n_heads)}, got {scores.shape}"
 
@@ -222,18 +224,24 @@ class MultiHeadAttention:
 
         print(f"q * k^T = s.shape = {scores.shape}")
 
-        s2 = softmax(scores, dim=-1) 
+        s2 = softmax(scores, dim=1)
         self.saved_steps['softmax'] = s2
 
         print(f"Softmax attn.shape = {s2.shape}")
-        return s2
-        attn = jnp.matmul(s2, value)
+        attn = jnp.einsum("cCbh,Cbhd->cbhd", s2, value)
         print(f"*v shape = {attn.shape}")
+        self.saved_steps['scaled_values'] = attn
+
+        # attn.shape: (context_len, batch_size, n_heads, d_k)
         
         # concat heads
-        attn = attn.transpose((0, 2, 1, 3)).reshape((context_len, batch_size, -1))
+        attn = attn.reshape((context_len, batch_size, emb_size))        
+        self.saved_steps['concat_heads'] = attn
         print(f"After reshape: x.shape = {attn.shape}")
-        out = self.out(state.W_o, attn)
+        out = jnp.einsum("cbd,Dd->cbD", attn, state.output_state.weights)
+        # add bias
+        out += state.output_state.bias
+        self.saved_steps['out'] = out
         print(f"out.shape = {out.shape}")
         return out
 
