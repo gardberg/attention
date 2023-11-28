@@ -205,6 +205,8 @@ class MultiHeadAttention:
         value = self.value_fn(state.value_state, v)
 
         self.saved_steps["transformed_query"] = query
+        self.saved_steps["transformed_key"] = key
+        self.saved_steps["transformed_value"] = value
 
         # shape: (context_len, batch_size, n_heads, d_k)
 
@@ -213,18 +215,17 @@ class MultiHeadAttention:
         
         # calc q * k^T = s with shape (contex_len, context_len, batch_size, n_heads)
 
-        # scores = jnp.matmul(query, key.transpose((0, 1, 3, 2)))
-        # scores = jnp.einsum("...id,...jd->...ij", query, key)
         scores = jnp.einsum("cbhd,Cbhd->cCbh", query, key)
         self.saved_steps['scores'] = scores
         assert scores.shape == (context_len, context_len, batch_size, self.n_heads), f"Expected shape {(context_len, context_len, batch_size, self.n_heads)}, got {scores.shape}"
 
-        scores *= (1 / jnp.sqrt(self.d_k))
-        self.saved_steps['scaled_scores'] = scores
+        print(f"Scaling using {1 / jnp.sqrt(self.d_k)}")
+        scaled_scores = scores * (1 / jnp.sqrt(self.d_k))
+        self.saved_steps['scaled_scores'] = scaled_scores
 
-        print(f"q * k^T = s.shape = {scores.shape}")
+        print(f"q * k^T = s.shape = {scaled_scores.shape}")
 
-        s2 = softmax(scores, dim=1)
+        s2 = softmax(scaled_scores, dim=1)
         self.saved_steps['softmax'] = s2
 
         print(f"Softmax attn.shape = {s2.shape}")
