@@ -121,6 +121,7 @@ class PreAttention:
     """
     Dense layer transforming input to query, key or value
     """
+
     def __init__(
         self, n_heads: int, emb_size: int, d_k: int = None, bias: bool = False
     ):
@@ -133,12 +134,11 @@ class PreAttention:
         # x.shape: (context_len, batch_size, emb_size)
         # returns: q, k, or v of shape (context_len, batch_size, n_heads, d_k)
 
-        # hej jag heter
-
         x = self.dense(state, x)
 
         head_shape = x.shape[:-1]
         # split the embedding size by the number of heads
+        print(f"x has type {type(x)}, d_k = {self.d_k}")
         x = x.reshape((*head_shape, self.n_heads, self.d_k))
         return x
 
@@ -162,44 +162,51 @@ class MultiHeadAttentionState(NamedTuple):
     key_state: DenseState
     value_state: DenseState
     output_state: DenseState
-    
-    
+
+
 class MultiHeadAttention:
     """
     Attention with n_heads heads
     """
+
     # Softmax along time / context length dimension
-    
-    def __init__(self, n_heads: int, emb_size: int, bias: bool = False):
+
+    def __init__(
+        self, emb_size: int, n_heads: int, bias: bool = False, v_bias: bool = True
+    ):
         self.n_heads = n_heads
         # Features per head (head dim)
+        assert emb_size % n_heads == 0, f"emb_size must be divisible by n_heads"
         self.d_k = emb_size // n_heads
 
-        self.query_fn = PreAttention(n_heads, emb_size, d_k=self.d_k, bias=bias)
-        self.key_fn = PreAttention(n_heads, emb_size, d_k=self.d_k, bias=bias)
-        self.value_fn = PreAttention(n_heads, emb_size, d_k=self.d_k, bias=True) # Why bias here?
-        
-        self.out = Dense(emb_size, emb_size, bias=False)
+        self.query_fn = PreAttention(n_heads, emb_size, d_k=self.d_k)
+        self.key_fn = PreAttention(n_heads, emb_size, d_k=self.d_k)
+        self.value_fn = PreAttention(n_heads, emb_size, d_k=self.d_k, bias=v_bias)
+
+        self.out = Dense(emb_size, emb_size, bias=bias)
+        self.bias = bias
 
         self.saved_steps = {}
-        
+
     def init_state(self, rng: jax.Array) -> MultiHeadAttentionState:
         rngs = random.split(rng, 4)
         return MultiHeadAttentionState(
             self.query_fn.init_state(rngs[0]),
             self.key_fn.init_state(rngs[1]),
             self.value_fn.init_state(rngs[2]),
-            self.out.init_state(rngs[3])
+            self.out.init_state(rngs[3]),
         )
 
-    def forward(self, state: MultiHeadAttentionState, q: jax.Array, k: jax.Array, v: jax.Array) -> jax.Array:
+    def forward(
+        self, state: MultiHeadAttentionState, q: jax.Array, k: jax.Array, v: jax.Array
+    ) -> jax.Array:
         # TODO: Add masking
         # q, k, v shape: (context_len, batch_size, emb_size)
         print(f"q.shape = {q.shape}, k.shape = {k.shape}, v.shape = {v.shape}")
         self.saved_steps["input_query"] = q
 
         context_len, batch_size, emb_size = q.shape
-        
+
         query = self.query_fn(state.query_state, q)
         key = self.key_fn(state.key_state, k)
         value = self.value_fn(state.value_state, v)
@@ -211,38 +218,50 @@ class MultiHeadAttention:
         # shape: (context_len, batch_size, n_heads, d_k)
 
         print("# Shapes after linear transform and split into heads")
-        print(f"query.shape = {query.shape}, key.shape = {key.shape}, value.shape = {value.shape}")
-        
+        print(
+            f"query.shape = {query.shape}, key.shape = {key.shape}, value.shape = {value.shape}"
+        )
+
         # calc q * k^T = s with shape (contex_len, context_len, batch_size, n_heads)
 
         scores = jnp.einsum("cbhd,Cbhd->cCbh", query, key)
-        self.saved_steps['scores'] = scores
-        assert scores.shape == (context_len, context_len, batch_size, self.n_heads), f"Expected shape {(context_len, context_len, batch_size, self.n_heads)}, got {scores.shape}"
+        self.saved_steps["scores"] = scores
+        assert scores.shape == (
+            context_len,
+            context_len,
+            batch_size,
+            self.n_heads,
+        ), f"Expected shape {(context_len, context_len, batch_size, self.n_heads)}, got {scores.shape}"
 
         print(f"Scaling using {1 / jnp.sqrt(self.d_k)}")
         scaled_scores = scores * (1 / jnp.sqrt(self.d_k))
-        self.saved_steps['scaled_scores'] = scaled_scores
+        self.saved_steps["scaled_scores"] = scaled_scores
 
         print(f"q * k^T = s.shape = {scaled_scores.shape}")
 
         s2 = softmax(scaled_scores, dim=1)
-        self.saved_steps['softmax'] = s2
+        self.saved_steps["softmax"] = s2
 
         print(f"Softmax attn.shape = {s2.shape}")
         attn = jnp.einsum("cCbh,Cbhd->cbhd", s2, value)
         print(f"*v shape = {attn.shape}")
-        self.saved_steps['scaled_values'] = attn
+        self.saved_steps["scaled_values"] = attn
 
         # attn.shape: (context_len, batch_size, n_heads, d_k)
-        
-        # concat heads
-        attn = attn.reshape((context_len, batch_size, emb_size))        
-        self.saved_steps['concat_heads'] = attn
-        print(f"After reshape: x.shape = {attn.shape}")
-        out = jnp.einsum("cbd,Dd->cbD", attn, state.output_state.weights)
-        # add bias
-        out += state.output_state.bias
-        self.saved_steps['out'] = out
-        print(f"out.shape = {out.shape}")
-        return out
 
+        # concat heads
+        attn = attn.reshape((context_len, batch_size, emb_size))
+
+        self.saved_steps["concat_heads"] = attn
+        print(f"After reshape: x.shape = {attn.shape}")
+
+        # TODO: Rewrite dense to hande this instead
+        out = jnp.einsum("cbd,Dd->cbD", attn, state.output_state.weights)
+        if self.bias:
+            out += state.output_state.bias
+
+        self.saved_steps["out"] = out
+        print(f"out.shape = {out.shape}")
+        # out.shape: (context_len, batch_size, emb_dim)
+
+        return out

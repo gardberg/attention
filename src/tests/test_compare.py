@@ -219,8 +219,3 @@ def test_pre_attention(emb_size, n_heads, use_bias):
     assert np.allclose(
         y_torch, y_jax, atol=TOL
     ), f"y_torch = {y_torch}, y_jax = {y_jax}"
-
-
-def test_multihead_attention():
-    # TODO: add test
-    pass
