@@ -31,8 +31,8 @@ def test_dense(n_in: int, n_out: int):
         y_torch = torch_linear(x_in).numpy()
 
     # Jax
-    dense = Dense(n_in, n_out)
-    state = DenseState(jnp.array(w), jnp.array(b))
+    dense = Linear(n_in, n_out)
+    state = LinearState(jnp.array(w), jnp.array(b))
     y_jax = dense(state, jnp.array(x_in))
 
     logger.log(LOG_LEVEL, f"Diff: {np.linalg.norm(y_torch - y_jax):.2e}")
@@ -54,8 +54,8 @@ def test_dense_batch(n_in, n_out, batch_size):
         y_torch = torch_linear(x_in).numpy()
 
     # Jax
-    dense = Dense(n_in, n_out)
-    state = DenseState(jnp.array(w), jnp.array(b))
+    dense = Linear(n_in, n_out)
+    state = LinearState(jnp.array(w), jnp.array(b))
     y_jax = dense(state, jnp.array(x_in))
     logger.log(LOG_LEVEL, f"y_jax: {y_jax.shape}")
 
@@ -76,8 +76,8 @@ def test_dense_batch_no_bias(n_in, n_out, batch_size):
         y_torch = torch_linear(x_in).numpy()
 
     # Jax
-    dense = Dense(n_in, n_out, bias=False)
-    state = DenseState(jnp.array(w), None)
+    dense = Linear(n_in, n_out, bias=False)
+    state = LinearState(jnp.array(w), None)
     y_jax = dense(state, jnp.array(x_in))
     logger.log(LOG_LEVEL, f"y_jax: {y_jax.shape}")
 
@@ -101,8 +101,8 @@ def test_dense_square():
         y_torch = torch_linear(x_in.flatten()).numpy()
 
     # Jax
-    dense = Dense(n_in, n_out)
-    state = DenseState(jnp.array(w), jnp.array(b))
+    dense = Linear(n_in, n_out)
+    state = LinearState(jnp.array(w), jnp.array(b))
     y_jax = dense(state, jnp.array(x_in.flatten()))
 
     logger.log(LOG_LEVEL, f"Diff: {np.linalg.norm(y_torch - y_jax):.2e}")
@@ -208,7 +208,7 @@ def test_pre_attention(emb_size, n_heads, use_bias):
     # Jax
     weight = jnp.array(linear.weight.detach())
     bias = jnp.array(linear.bias.detach()) if use_bias else None
-    state = DenseState(weight, bias)
+    state = LinearState(weight, bias)
 
     preattn = PreAttention(n_heads=n_heads, emb_size=emb_size, d_k=d_k, bias=use_bias)
     y_jax = preattn(state, jnp.array(x))

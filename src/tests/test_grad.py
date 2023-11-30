@@ -49,10 +49,10 @@ def test_dense_grad(n_in: int, n_out: int, batch_size: int):
     ]
 
     # Jax
-    dense = Dense(n_in, n_out)
+    dense = Linear(n_in, n_out)
     weights_jnp = jnp.array(torch_linear.weight.detach().numpy())
     bias_jnp = jnp.array(torch_linear.bias.detach().numpy())
-    state = DenseState(weights_jnp, bias_jnp)
+    state = LinearState(weights_jnp, bias_jnp)
 
     mse_loss = MSELoss()
 

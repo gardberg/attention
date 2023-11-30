@@ -2,10 +2,16 @@
 
 Exploring attention and related concepts in Jax.
 
-See `example.ipynb` for a simple network training example.
 
+### Demonstrating quadratic time and memory scaling
 
-<img src="images/decision_boundary.gif" width="600" height="360" />
+<img src="images/attention_time_scaling.png" width="450" height="270" />
+
+### Dense example
+
+See `examples/example_dense.ipynb`.
+
+<img src="images/decision_boundary.gif" width="450" height="270" />
 
 ### Setup
 

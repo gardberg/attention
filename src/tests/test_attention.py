@@ -40,7 +40,7 @@ def test_multihead_attn(n_heads, emb_size, batch_size):
         torch_mha.out_proj.weight
     )
 
-    torch_weights = tuple(DenseState(jnp.array(w.detach().numpy()), None) for w in torch_weights)
+    torch_weights = tuple(LinearState(jnp.array(w.detach().numpy()), None) for w in torch_weights)
 
     jax_mha_state = MultiHeadAttentionState(*torch_weights)
     x_jnp = jnp.array(x.detach().numpy())

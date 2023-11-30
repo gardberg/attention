@@ -50,8 +50,8 @@ def batchnorm_1d(
     x: jax.Array, state: BatchNormState, training: bool = True, eps=1e-5
 ) -> Tuple[jax.Array, BatchNormState]:
     """
-    :param jax.Array x:           (B, N) or (B, N, L), B batch size, N input dim, L input length
-    :param BatchNormState state:    NamedTuple with mean, var, gamma, beta
+    :param jax.Array x: (B, N) or (B, N, L), B batch size, N input dim, L input length
+    :param BatchNormState state: NamedTuple with mean, var, gamma, beta
     """
     # https://pytorch.org/docs/stable/generated/torch.nn.BatchNorm1d.html#torch.nn.BatchNorm1d
 
@@ -82,55 +82,59 @@ def batchnorm_1d(
     return state.gamma * x_norm + state.beta, new_state
 
 
-class DenseState(NamedTuple):
+class LinearState(NamedTuple):
     weights: jax.Array
     bias: jax.Array
 
 
-class Dense:
-    def __init__(self, n_in: int = None, n_out: int = None, bias: bool = True):
+class Linear:
+    def __init__(self, n_in: int, n_out: int, bias: bool = True, batch_dim: int=0):
         self.n_in = n_in
         self.n_out = n_out
         self.bias = bias
+        self.batch_dim = batch_dim
 
-    def init_state(self, rng: jax.Array, scale=1e-2) -> DenseState:
+    def init_state(self, rng: jax.Array) -> LinearState:
         w_key, b_key = random.split(rng)
-        w = scale * random.normal(w_key, (self.n_out, self.n_in))
-        b = scale * random.normal(b_key, (self.n_out,)) if self.bias else None
-        return DenseState(w, b)
+        init_range = 1 / jnp.sqrt(self.n_in)
+        w = random.uniform(w_key, (self.n_out, self.n_in), minval=-init_range, maxval=init_range)
+        b = random.uniform(b_key, (self.n_out,), minval=-init_range, maxval=init_range) if self.bias else None
+        return LinearState(w, b)
 
-    def __call__(self, state: DenseState, x: jax.Array) -> jax.Array:
-        # Assume x.shape: (batch_size, n_in) or (n_in)
-
-        # Batch if x has a batch dim
-        if x.ndim > 2:
-            raise ValueError(f"Input dim must be 1 or 2, got {x.ndim}")
-        elif x.ndim == 2:
-            return jax.vmap(self.forward, in_axes=(None, 0))(state, x)
+    def __call__(self, state: LinearState, x: jax.Array) -> jax.Array:
+        """
+        Batched forward pass along batch_dim
+        """
+        if x.ndim > 1:
+            return jax.vmap(self._forward, in_axes=(None, self.batch_dim))(state, x)
         else:
-            return self.forward(state, x)
+            return self._forward(state, x)
 
-    def forward(self, state: DenseState, x: jax.Array) -> jax.Array:
-        # Linear forward pass of non-batched input
-        # dot = jnp.dot(x, state.weights)
+    def _forward(self, state: LinearState, x: jax.Array) -> jax.Array: 
+        """
+        Non-batched forward pass
+
+        x: input with shape (*, n_in) where * is any number of dimension, including None
+        returns: output with shape (*, n_out)
+        """
         dot = jnp.matmul(x, state.weights.T)
         return dot + state.bias if self.bias else dot
 
 
 class PreAttention:
     """
-    Dense layer transforming input to query, key or value
+    Linear layer transforming input to query, key or value
     """
 
     def __init__(
-        self, n_heads: int, emb_size: int, d_k: int = None, bias: bool = False
+        self, emb_size: int, n_heads: int, d_k: int = None, bias: bool = False
     ):
         self.n_heads = n_heads
         self.d_k = emb_size if d_k is None else d_k
 
-        self.dense = Dense(emb_size, n_heads * self.d_k, bias=bias)
+        self.dense = Linear(emb_size, n_heads * self.d_k, bias=bias)
 
-    def forward(self, state: DenseState, x: jax.Array) -> jax.Array:
+    def forward(self, state: LinearState, x: jax.Array) -> jax.Array:
         # x.shape: (context_len, batch_size, emb_size)
         # returns: q, k, or v of shape (context_len, batch_size, n_heads, d_k)
 
@@ -138,11 +142,10 @@ class PreAttention:
 
         head_shape = x.shape[:-1]
         # split the embedding size by the number of heads
-        print(f"x has type {type(x)}, d_k = {self.d_k}")
         x = x.reshape((*head_shape, self.n_heads, self.d_k))
         return x
 
-    def init_state(self, rng: jax.Array) -> DenseState:
+    def init_state(self, rng: jax.Array) -> LinearState:
         return self.dense.init_state(rng)
 
     def __call__(self, weight_matrix: jax.Array, x: jax.Array) -> jax.Array:
@@ -158,10 +161,10 @@ class PreAttention:
 
 
 class MultiHeadAttentionState(NamedTuple):
-    query_state: DenseState
-    key_state: DenseState
-    value_state: DenseState
-    output_state: DenseState
+    query_state: LinearState
+    key_state: LinearState
+    value_state: LinearState
+    output_state: LinearState
 
 
 class MultiHeadAttention:
@@ -174,16 +177,22 @@ class MultiHeadAttention:
     def __init__(
         self, emb_size: int, n_heads: int, bias: bool = False, v_bias: bool = True
     ):
+        """
+        emb_size:   Total size of query, key and value. Will be split over the number of heads
+        n_heads:    Number of individual attention heads
+        bias:       Whether to use bias in the output linear layer
+        v_bias:     Whether to use bias in the value linear layer 
+        """
         self.n_heads = n_heads
         # Features per head (head dim)
         assert emb_size % n_heads == 0, f"emb_size must be divisible by n_heads"
         self.d_k = emb_size // n_heads
 
-        self.query_fn = PreAttention(n_heads, emb_size, d_k=self.d_k)
-        self.key_fn = PreAttention(n_heads, emb_size, d_k=self.d_k)
-        self.value_fn = PreAttention(n_heads, emb_size, d_k=self.d_k, bias=v_bias)
+        self.query_fn = PreAttention(emb_size, n_heads, d_k=self.d_k)
+        self.key_fn = PreAttention(emb_size, n_heads, d_k=self.d_k)
+        self.value_fn = PreAttention(emb_size, n_heads, d_k=self.d_k, bias=v_bias)
 
-        self.out = Dense(emb_size, emb_size, bias=bias)
+        self.out = Linear(emb_size, emb_size, bias=bias)
         self.bias = bias
 
         self.saved_steps = {}
@@ -202,7 +211,6 @@ class MultiHeadAttention:
     ) -> jax.Array:
         # TODO: Add masking
         # q, k, v shape: (context_len, batch_size, emb_size)
-        print(f"q.shape = {q.shape}, k.shape = {k.shape}, v.shape = {v.shape}")
         self.saved_steps["input_query"] = q
 
         context_len, batch_size, emb_size = q.shape
@@ -217,11 +225,6 @@ class MultiHeadAttention:
 
         # shape: (context_len, batch_size, n_heads, d_k)
 
-        print("# Shapes after linear transform and split into heads")
-        print(
-            f"query.shape = {query.shape}, key.shape = {key.shape}, value.shape = {value.shape}"
-        )
-
         # calc q * k^T = s with shape (contex_len, context_len, batch_size, n_heads)
 
         scores = jnp.einsum("cbhd,Cbhd->cCbh", query, key)
@@ -233,18 +236,13 @@ class MultiHeadAttention:
             self.n_heads,
         ), f"Expected shape {(context_len, context_len, batch_size, self.n_heads)}, got {scores.shape}"
 
-        print(f"Scaling using {1 / jnp.sqrt(self.d_k)}")
         scaled_scores = scores * (1 / jnp.sqrt(self.d_k))
         self.saved_steps["scaled_scores"] = scaled_scores
-
-        print(f"q * k^T = s.shape = {scaled_scores.shape}")
 
         s2 = softmax(scaled_scores, dim=1)
         self.saved_steps["softmax"] = s2
 
-        print(f"Softmax attn.shape = {s2.shape}")
         attn = jnp.einsum("cCbh,Cbhd->cbhd", s2, value)
-        print(f"*v shape = {attn.shape}")
         self.saved_steps["scaled_values"] = attn
 
         # attn.shape: (context_len, batch_size, n_heads, d_k)
@@ -253,15 +251,15 @@ class MultiHeadAttention:
         attn = attn.reshape((context_len, batch_size, emb_size))
 
         self.saved_steps["concat_heads"] = attn
-        print(f"After reshape: x.shape = {attn.shape}")
 
-        # TODO: Rewrite dense to hande this instead
-        out = jnp.einsum("cbd,Dd->cbD", attn, state.output_state.weights)
-        if self.bias:
-            out += state.output_state.bias
+        # out = jnp.einsum("cbd,Dd->cbD", attn, state.output_state.weights)
+        out = self.out(state.output_state, attn)
 
         self.saved_steps["out"] = out
-        print(f"out.shape = {out.shape}")
         # out.shape: (context_len, batch_size, emb_dim)
 
         return out
+
+    def __call__(self, state: MultiHeadAttentionState, q: jax.Array, k: jax.Array, v: jax.Array) -> jax.Array:
+        return self.forward(state, q, k, v) 
+                 
