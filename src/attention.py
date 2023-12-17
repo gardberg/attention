@@ -2,40 +2,13 @@ import jax.numpy as jnp
 import jax
 import numpy as np
 from jax import random, vmap
-from typing import List, Callable, Tuple, NamedTuple
+from typing import List, Callable, Tuple, NamedTuple, Optional
 from utils import LOG_LEVEL, get_logger
+from act import softmax
 
 logger = get_logger()
 
 rng = random.PRNGKey(0)
-
-
-# Naive
-def softmax(x: jax.Array, dim: int) -> jax.Array:
-    xe = jnp.exp(x)
-    return xe / jnp.sum(xe, axis=dim, keepdims=True)
-
-
-# Off by one
-def softmax_one(x: jax.Array, dim: int) -> jax.Array:
-    xe = jnp.exp(x)
-    return xe / (jnp.sum(xe, axis=dim, keepdims=True) + 1)
-
-
-# Stable
-def softmax_stable(x: jax.Array, dim: int) -> jax.Array:
-    maxes = jnp.max(x, axis=dim, keepdims=True)
-    xm = jnp.exp(x - maxes)
-    return xm / jnp.sum(xm, axis=dim, keepdims=True)
-
-
-def sigmoid(x: jax.Array) -> jax.Array:
-    return 1 / (1 + jnp.exp(-x))
-
-
-def relu(x: jax.Array) -> jax.Array:
-    return jnp.maximum(x, 0)
-
 
 class BatchNormState(NamedTuple):
     # TODO: make into nested dict?
@@ -172,8 +145,6 @@ class MultiHeadAttention:
     Attention with n_heads heads
     """
 
-    # Softmax along time / context length dimension
-
     def __init__(
         self, emb_size: int, n_heads: int, bias: bool = False, v_bias: bool = True
     ):
@@ -183,6 +154,7 @@ class MultiHeadAttention:
         bias:       Whether to use bias in the output linear layer
         v_bias:     Whether to use bias in the value linear layer 
         """
+
         self.n_heads = n_heads
         # Features per head (head dim)
         assert emb_size % n_heads == 0, f"emb_size must be divisible by n_heads"
@@ -193,9 +165,8 @@ class MultiHeadAttention:
         self.value_fn = PreAttention(emb_size, n_heads, d_k=self.d_k, bias=v_bias)
 
         self.out = Linear(emb_size, emb_size, bias=bias)
-        self.bias = bias
 
-        self.saved_steps = {}
+        self.mask = None
 
     def init_state(self, rng: jax.Array) -> MultiHeadAttentionState:
         rngs = random.split(rng, 4)
@@ -206,12 +177,18 @@ class MultiHeadAttention:
             self.out.init_state(rngs[3]),
         )
 
+    def _set_mask(self, context_len: int, batch_size: int) -> jax.Array:
+        # creates a causal mask of shape (context_len, context_len, batch_size, n_heads)
+        single_mask = jnp.tril(jnp.ones((context_len, context_len)), k=0)
+        single_mask = single_mask.reshape((context_len, context_len, 1, 1))
+        mask = jnp.tile(single_mask, (1, 1, batch_size, self.n_heads))
+        return mask
+        
+
     def forward(
-        self, state: MultiHeadAttentionState, q: jax.Array, k: jax.Array, v: jax.Array
+        self, state: MultiHeadAttentionState, q: jax.Array, k: jax.Array, v: jax.Array, mask: Optional[bool] = False 
     ) -> jax.Array:
-        # TODO: Add masking
         # q, k, v shape: (context_len, batch_size, emb_size)
-        self.saved_steps["input_query"] = q
 
         context_len, batch_size, emb_size = q.shape
 
@@ -219,16 +196,10 @@ class MultiHeadAttention:
         key = self.key_fn(state.key_state, k)
         value = self.value_fn(state.value_state, v)
 
-        self.saved_steps["transformed_query"] = query
-        self.saved_steps["transformed_key"] = key
-        self.saved_steps["transformed_value"] = value
-
         # shape: (context_len, batch_size, n_heads, d_k)
-
         # calc q * k^T = s with shape (contex_len, context_len, batch_size, n_heads)
-
         scores = jnp.einsum("cbhd,Cbhd->cCbh", query, key)
-        self.saved_steps["scores"] = scores
+
         assert scores.shape == (
             context_len,
             context_len,
@@ -237,27 +208,25 @@ class MultiHeadAttention:
         ), f"Expected shape {(context_len, context_len, batch_size, self.n_heads)}, got {scores.shape}"
 
         scaled_scores = scores * (1 / jnp.sqrt(self.d_k))
-        self.saved_steps["scaled_scores"] = scaled_scores
+        print(f"Scaled scores shape: {scaled_scores.shape}")
 
+        # TODO: Add tests
+        if mask:
+            if self.mask is None: self.mask = self._set_mask(context_len, batch_size) 
+            scaled_scores = jnp.where(self.mask, scores, float("-inf"))
+        
         s2 = softmax(scaled_scores, dim=1)
-        self.saved_steps["softmax"] = s2
 
         attn = jnp.einsum("cCbh,Cbhd->cbhd", s2, value)
-        self.saved_steps["scaled_values"] = attn
-
         # attn.shape: (context_len, batch_size, n_heads, d_k)
 
         # concat heads
         attn = attn.reshape((context_len, batch_size, emb_size))
 
-        self.saved_steps["concat_heads"] = attn
-
         # out = jnp.einsum("cbd,Dd->cbD", attn, state.output_state.weights)
         out = self.out(state.output_state, attn)
 
-        self.saved_steps["out"] = out
         # out.shape: (context_len, batch_size, emb_dim)
-
         return out
 
     def __call__(self, state: MultiHeadAttentionState, q: jax.Array, k: jax.Array, v: jax.Array) -> jax.Array:

@@ -2,10 +2,12 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 import torch
-from attention import *
-from utils import LOG_LEVEL, get_logger
 import pytest
 from typing import Tuple
+
+from utils import LOG_LEVEL, get_logger
+from attention import *
+from act import *
 
 logger = get_logger()
 

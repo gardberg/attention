@@ -28,16 +28,32 @@ Filter for a specific test to run with `pytest -k test_name`
 
 - [x] Implement softmax
 - [x] Implement network
-- [ ] Implement batch norm
-- [ ] Implement vanilla attention
-- [ ] Implement multi headed attention
-- [ ] Windowed attention
-- [ ] Windowed attention with recomputation
-- [ ] Streaming LLM attention
+- [x] Implement batch norm
+- [x] Implement vanilla attention
+- [x] Implement multi headed attention
 
 - [x] Add tests to compare with pytorch implementations
 
-#### Links
+#### GPT
+
+- [ ] Attention Masking
+- [ ] Layer Norm
+- [ ] Positional Encoding
+
+- [ ] Tokenizer
+
+- [ ] Encoder
+- [ ] Decoder
+- [ ] Transformer
+
+#### Improvements
+
+- [ ] Rotational Positional Encoding
+- [ ] Windowed attention with recomputation
+- [ ] Streaming LLM attention
+- [ ] Grouped Query Attention?
+
+### Links
 
 Tree Map: https://jax.readthedocs.io/en/latest/jax-101/05.1-pytrees.html
 
@@ -51,6 +67,8 @@ ML Library in Jax: https://flax.readthedocs.io/en/latest/
 
 NN Example: https://jax.readthedocs.io/en/latest/notebooks/Neural_Network_and_Data_Loading.html
 
+#### Transformers
+
 Illustrated transformer: https://jalammar.github.io/illustrated-transformer/
 
 Annotated transformer: https://nlp.seas.harvard.edu/2018/04/03/attention.html
@@ -63,7 +81,10 @@ Attention explained https://storrs.io/attention/
 
 https://math.stackexchange.com/questions/63074/is-there-a-3-dimensional-matrix-by-matrix-product
 
-Oklart varför attention beräkningen är annorlunda... Får test som failar med 1d.
+#### Modern Transformer
 
-Känns som att det borde vara ngn bias?? Kan väl inte vara fel dim som summeras över?
-Är det en extra vikt som används ngnstans? W_o? Oklart
+Reformer: The Efficient Transformer https://arxiv.org/abs/2001.04451
+
+RoFormer: Enhanced Transformer with Rotary Position Embedding https://arxiv.org/abs/2104.09864
+
+Fast Transformer Decoding: One Write-Head is All You Need https://arxiv.org/abs/1911.02150 (Multi-Query Attention)
