@@ -36,6 +36,8 @@ Filter for a specific test to run with `pytest -k test_name`
 
 #### GPT
 
+- [ ] Switch to using `poetry` for dependencies
+
 - [ ] Attention Masking
 - [ ] Layer Norm
 - [ ] Positional Encoding

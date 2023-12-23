@@ -2,21 +2,16 @@ import jax.numpy as jnp
 import jax
 import numpy as np
 from jax import random, vmap
-from typing import List, Callable, Tuple, NamedTuple, Optional
+from typing import Tuple, NamedTuple
 from utils import LOG_LEVEL, get_logger
 from act import softmax
+from states import BatchNormState, LinearState, MultiHeadAttentionState
+from typing import NamedTuple, TypeVar, Type
+import torch
 
 logger = get_logger()
 
 rng = random.PRNGKey(0)
-
-class BatchNormState(NamedTuple):
-    # TODO: make into nested dict?
-    mean: jax.Array = 0
-    var: jax.Array = 1
-    gamma: jax.Array = 1
-    beta: jax.Array = 0
-    momentum: jax.Array = 0.1
 
 
 def batchnorm_1d(
@@ -53,11 +48,6 @@ def batchnorm_1d(
     )
 
     return state.gamma * x_norm + state.beta, new_state
-
-
-class LinearState(NamedTuple):
-    weights: jax.Array
-    bias: jax.Array
 
 
 class Linear:
@@ -133,12 +123,6 @@ class PreAttention:
             return self.forward(weight_matrix, x)
 
 
-class MultiHeadAttentionState(NamedTuple):
-    query_state: LinearState
-    key_state: LinearState
-    value_state: LinearState
-    output_state: LinearState
-
 
 class MultiHeadAttention:
     """
@@ -166,8 +150,6 @@ class MultiHeadAttention:
 
         self.out = Linear(emb_size, emb_size, bias=bias)
 
-        self.mask = None
-
     def init_state(self, rng: jax.Array) -> MultiHeadAttentionState:
         rngs = random.split(rng, 4)
         return MultiHeadAttentionState(
@@ -177,16 +159,16 @@ class MultiHeadAttention:
             self.out.init_state(rngs[3]),
         )
 
-    def _set_mask(self, context_len: int, batch_size: int) -> jax.Array:
+    def get_causal_mask(self, context_len: int, batch_size: int) -> jax.Array:
         # creates a causal mask of shape (context_len, context_len, batch_size, n_heads)
         single_mask = jnp.tril(jnp.ones((context_len, context_len)), k=0)
         single_mask = single_mask.reshape((context_len, context_len, 1, 1))
         mask = jnp.tile(single_mask, (1, 1, batch_size, self.n_heads))
         return mask
-        
 
+    
     def forward(
-        self, state: MultiHeadAttentionState, q: jax.Array, k: jax.Array, v: jax.Array, mask: Optional[bool] = False 
+        self, state: MultiHeadAttentionState, q: jax.Array, k: jax.Array, v: jax.Array, mask: jax.Array = None 
     ) -> jax.Array:
         # q, k, v shape: (context_len, batch_size, emb_size)
 
@@ -208,12 +190,11 @@ class MultiHeadAttention:
         ), f"Expected shape {(context_len, context_len, batch_size, self.n_heads)}, got {scores.shape}"
 
         scaled_scores = scores * (1 / jnp.sqrt(self.d_k))
-        print(f"Scaled scores shape: {scaled_scores.shape}")
 
         # TODO: Add tests
-        if mask:
-            if self.mask is None: self.mask = self._set_mask(context_len, batch_size) 
-            scaled_scores = jnp.where(self.mask, scores, float("-inf"))
+        if mask is not None:
+            assert mask.shape == scores.shape, f"Mask shape {mask.shape} must match scores shape {scores.shape}. To create a mask, use MultiHeadAttention.get_causal_mask()"
+            scaled_scores = jnp.where(mask, scores, float("-inf"))
         
         s2 = softmax(scaled_scores, dim=1)
 
@@ -229,6 +210,28 @@ class MultiHeadAttention:
         # out.shape: (context_len, batch_size, emb_dim)
         return out
 
-    def __call__(self, state: MultiHeadAttentionState, q: jax.Array, k: jax.Array, v: jax.Array) -> jax.Array:
-        return self.forward(state, q, k, v) 
+    def __call__(self, state: MultiHeadAttentionState, q: jax.Array, k: jax.Array, v: jax.Array, mask: jax.Array = None) -> jax.Array:
+        return self.forward(state, q, k, v, mask) 
                  
+
+# TODO: Move into separate file
+# Requires torch import, which is a bit heavy
+NamedTupleSubclass = TypeVar("NamedTupleSubclass", bound=NamedTuple)
+def to_jax_state(torch_module: torch.nn.Module) -> Type[NamedTupleSubclass]:
+    
+    if isinstance(torch_module, torch.nn.MultiheadAttention):
+        emb_size = torch_module.embed_dim
+
+        torch_mha_weights = torch_module.in_proj_weight
+        torch_weights = (
+            torch_mha_weights[0:emb_size, :],
+            torch_mha_weights[emb_size : 2 * emb_size, :],
+            torch_mha_weights[2 * emb_size : 3 * emb_size, :],
+            torch_module.out_proj.weight
+        )
+        torch_weights = tuple(LinearState(jnp.array(w.detach().numpy()), None) for w in torch_weights)
+        return MultiHeadAttentionState(*torch_weights)
+        
+    else:
+        raise NotImplementedError(f"to_jax_state not implemented for {type(torch_module)}")
+

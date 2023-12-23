@@ -50,3 +50,8 @@ def test_multihead_attn(n_heads, emb_size, batch_size):
     
     print(f"y_torch.shape = {y_torch.shape}, y_jax.shape = {y_jax.shape}")
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
+
+
+@pytest.mark.parametrize("n_heads, emb_size, batch_size", [(1, 2, 3)])
+def test_attention_with_mask(n_heads, emb_size, batch_size):
+    pass

@@ -3,7 +3,6 @@ import logging
 LOG_LEVEL = 25
 # LOG_LEVEL = logging.DEBUG
 
-
 def get_logger():
     # Creates a local logger for the file it is called in with __name__
     # as the name of the logger.
