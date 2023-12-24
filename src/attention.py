@@ -231,6 +231,11 @@ def to_jax_state(torch_module: torch.nn.Module) -> Type[NamedTupleSubclass]:
         )
         torch_weights = tuple(LinearState(jnp.array(w.detach().numpy()), None) for w in torch_weights)
         return MultiHeadAttentionState(*torch_weights)
+
+    elif isinstance(torch_module, torch.nn.Linear):
+        weight = jnp.array(torch_module.weight.detach())
+        bias = jnp.array(torch_module.bias.detach()) if torch_module.bias is not None else None
+        return LinearState(weight, bias)
         
     else:
         raise NotImplementedError(f"to_jax_state not implemented for {type(torch_module)}")
