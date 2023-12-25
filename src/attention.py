@@ -130,7 +130,7 @@ class MultiHeadAttention:
     """
 
     def __init__(
-        self, emb_size: int, n_heads: int, bias: bool = False, v_bias: bool = True
+        self, emb_size: int, n_heads: int, out_bias: bool = False, v_bias: bool = True
     ):
         """
         emb_size:   Total size of query, key and value. Will be split over the number of heads
@@ -148,7 +148,9 @@ class MultiHeadAttention:
         self.key_fn = PreAttention(emb_size, n_heads, d_k=self.d_k)
         self.value_fn = PreAttention(emb_size, n_heads, d_k=self.d_k, bias=v_bias)
 
-        self.out = Linear(emb_size, emb_size, bias=bias)
+        self.out = Linear(emb_size, emb_size, bias=out_bias)
+
+        self.debug_states = dict()
 
     def init_state(self, rng: jax.Array) -> MultiHeadAttentionState:
         rngs = random.split(rng, 4)
@@ -161,9 +163,11 @@ class MultiHeadAttention:
 
     def get_causal_mask(self, context_len: int, batch_size: int) -> jax.Array:
         # creates a causal mask of shape (context_len, context_len, batch_size, n_heads)
-        single_mask = jnp.tril(jnp.ones((context_len, context_len)), k=0)
-        single_mask = single_mask.reshape((context_len, context_len, 1, 1))
-        mask = jnp.tile(single_mask, (1, 1, batch_size, self.n_heads))
+        # mask[i, j, ...] = true -> i can not attend to j
+        base_mask = jnp.tril(jnp.ones((context_len, context_len), dtype=bool), k=0)
+
+        # tile into shape (context_len, context_len, batch_size, n_heads)
+        mask = jnp.tile(base_mask[:, :, None, None], (1, 1, batch_size, self.n_heads))
         return mask
 
     
@@ -172,15 +176,24 @@ class MultiHeadAttention:
     ) -> jax.Array:
         # q, k, v shape: (context_len, batch_size, emb_size)
 
+        self.debug_states["input_query"] = q
+
         context_len, batch_size, emb_size = q.shape
 
         query = self.query_fn(state.query_state, q)
         key = self.key_fn(state.key_state, k)
         value = self.value_fn(state.value_state, v)
 
+        self.debug_states["query"] = query
+        self.debug_states["key"] = key
+        self.debug_states["value"] = value
+
         # shape: (context_len, batch_size, n_heads, d_k)
         # calc q * k^T = s with shape (contex_len, context_len, batch_size, n_heads)
+    
         scores = jnp.einsum("cbhd,Cbhd->cCbh", query, key)
+
+        self.debug_states["scores"] = scores
 
         assert scores.shape == (
             context_len,
@@ -191,21 +204,35 @@ class MultiHeadAttention:
 
         scaled_scores = scores * (1 / jnp.sqrt(self.d_k))
 
+        self.debug_states["scaled_scores"] = scaled_scores
+        self.debug_states["mask"] = mask
+
         # TODO: Add tests
         if mask is not None:
             assert mask.shape == scores.shape, f"Mask shape {mask.shape} must match scores shape {scores.shape}. To create a mask, use MultiHeadAttention.get_causal_mask()"
-            scaled_scores = jnp.where(mask, scores, float("-inf"))
+            # replace values in scores with float('-inf') where mask is false
+            scaled_scores = jnp.where(mask, scaled_scores, float("-inf"))
+            
+        self.debug_states["masked_scaled_scores"] = scaled_scores
         
         s2 = softmax(scaled_scores, dim=1)
+
+        self.debug_states["softmax"] = s2
 
         attn = jnp.einsum("cCbh,Cbhd->cbhd", s2, value)
         # attn.shape: (context_len, batch_size, n_heads, d_k)
 
+        self.debug_states["scaled_values"] = attn
+
         # concat heads
         attn = attn.reshape((context_len, batch_size, emb_size))
 
+        self.debug_states["concat_heads"] = attn
+
         # out = jnp.einsum("cbd,Dd->cbD", attn, state.output_state.weights)
         out = self.out(state.output_state, attn)
+
+        self.debug_states["out"] = out
 
         # out.shape: (context_len, batch_size, emb_dim)
         return out
@@ -217,26 +244,23 @@ class MultiHeadAttention:
 # TODO: Move into separate file
 # Requires torch import, which is a bit heavy
 NamedTupleSubclass = TypeVar("NamedTupleSubclass", bound=NamedTuple)
+
 def to_jax_state(torch_module: torch.nn.Module) -> Type[NamedTupleSubclass]:
-    
     if isinstance(torch_module, torch.nn.MultiheadAttention):
         emb_size = torch_module.embed_dim
+        w_in, b_in = torch_module.in_proj_weight, torch_module.in_proj_bias
+        w_out, b_out = torch_module.out_proj.weight, torch_module.out_proj.bias
 
-        torch_mha_weights = torch_module.in_proj_weight
-        torch_weights = (
-            torch_mha_weights[0:emb_size, :],
-            torch_mha_weights[emb_size : 2 * emb_size, :],
-            torch_mha_weights[2 * emb_size : 3 * emb_size, :],
-            torch_module.out_proj.weight
-        )
-        torch_weights = tuple(LinearState(jnp.array(w.detach().numpy()), None) for w in torch_weights)
-        return MultiHeadAttentionState(*torch_weights)
+        # Unstack stacked q, k, and v weights
+        linear_states = [LinearState(w_in[i*emb_size:(i+1)*emb_size], b_in[i*emb_size:(i+1)*emb_size] if b_in is not None else None) for i in range(3)]
+        linear_states.append(LinearState(w_out, b_out if b_out is not None else None))
+
+        return MultiHeadAttentionState(*(jax.tree_map(lambda x: jnp.array(x.detach()), linear_states)))
 
     elif isinstance(torch_module, torch.nn.Linear):
-        weight = jnp.array(torch_module.weight.detach())
-        bias = jnp.array(torch_module.bias.detach()) if torch_module.bias is not None else None
+        weight, bias = jnp.array(torch_module.weight.detach()), jnp.array(torch_module.bias.detach()) if torch_module.bias is not None else None
         return LinearState(weight, bias)
-        
+
     else:
         raise NotImplementedError(f"to_jax_state not implemented for {type(torch_module)}")
 

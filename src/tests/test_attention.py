@@ -64,7 +64,7 @@ def test_multihead_attn(n_heads, emb_size, batch_size):
         y_torch = torch_mha(x, x, x, need_weights=False)[0].detach().numpy()
 
     # Jax
-    jax_mha = MultiHeadAttention(emb_size, n_heads, bias=bias, v_bias=False)
+    jax_mha = MultiHeadAttention(emb_size, n_heads, out_bias=bias, v_bias=False)
 
     jax_mha_state = to_jax_state(torch_mha)
 
