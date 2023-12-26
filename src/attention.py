@@ -2,10 +2,10 @@ import jax.numpy as jnp
 import jax
 import numpy as np
 from jax import random, vmap
-from typing import Tuple, NamedTuple
+from typing import Tuple, NamedTuple, Union
 from utils import LOG_LEVEL, get_logger
 from act import softmax
-from states import BatchNormState, LinearState, MultiHeadAttentionState
+from states import *
 from typing import NamedTuple, TypeVar, Type
 import torch
 
@@ -49,6 +49,40 @@ def batchnorm_1d(
 
     return state.gamma * x_norm + state.beta, new_state
 
+# (context_len, batch_size, emb_dim) 
+class LayerNorm:
+    def __init__(self, norm_dims: Tuple[int, ...], eps=1e-5):
+
+        assert isinstance(norm_dims, tuple), f"norm_dims must be tuple, got {type(norm_dims)}"
+        self.norm_dims = norm_dims
+        # tuple of dims to normalize over
+        # Example: x.shape = (2, 3, 1), norm_dims = (3, 1)
+        # => Normalize over last 2 dims
+
+        # x.shape = (2, 3), norm_dims = (3,)
+        # => Normalize over last dim
+
+        self.eps = eps
+
+    def init_state(self):
+        return LayerNormState(
+            gamma=jnp.ones(self.norm_dims),
+            beta=jnp.zeros(self.norm_dims),
+        ) 
+
+    # Do we need to pass the state as output?
+    def forward(self, state: LayerNormState, x: jax.Array) -> jax.Array:
+        assert x.shape[-len(self.norm_dims):] == self.norm_dims, f"Input shape {x.shape} must have last dimension matching norm_dims: {self.norm_dims}"
+
+        # compute mean over last n = len(self.norm_dims) dimensions
+        axes_to_reduce = tuple(range(-len(self.norm_dims), 0)) # (-n, ..., -1)
+        means = jnp.mean(x, axis=axes_to_reduce, keepdims=True)
+
+        # biased estimator
+        vars = jnp.var(x, axis=axes_to_reduce, keepdims=True, ddof=1)
+        x_norm = (x - means) / jnp.sqrt(vars + self.eps)
+        return state.gamma * x_norm + state.beta
+        
 
 class Linear:
     def __init__(self, n_in: int, n_out: int, bias: bool = True, batch_dim: int=0):
