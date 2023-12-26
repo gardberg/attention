@@ -207,7 +207,7 @@ class MultiHeadAttention:
         self.debug_states["scaled_scores"] = scaled_scores
         self.debug_states["mask"] = mask
 
-        # TODO: Add tests
+        # TODO: At the moment False => mask. Pytorch default: True => mask. Switch?
         if mask is not None:
             assert mask.shape == scores.shape, f"Mask shape {mask.shape} must match scores shape {scores.shape}. To create a mask, use MultiHeadAttention.get_causal_mask()"
             # replace values in scores with float('-inf') where mask is false

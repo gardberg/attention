@@ -77,6 +77,26 @@ def test_multihead_attn(n_heads, emb_size, batch_size):
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
 
 
-@pytest.mark.parametrize("n_heads, emb_size, batch_size", [(1, 2, 3)])
+@pytest.mark.parametrize("n_heads, emb_size, batch_size", [(1, 1, 1), (1, 2, 3), (2, 4, 3), (8, 16, 8)])
 def test_attention_with_mask(n_heads, emb_size, batch_size):
-    pass
+    x = torch.randn(CONTEXT_LEN, batch_size, emb_size, requires_grad=False)
+    mha_torch = torch.nn.MultiheadAttention(emb_size, n_heads, bias=False, dropout=0.0)
+    
+    # Jax
+    x_jnp = jnp.array(x.detach().numpy())
+    jax_mha = MultiHeadAttention(emb_size, n_heads, out_bias=False, v_bias=False)
+    state = to_jax_state(mha_torch)
+
+    causal_mask_jax = jax_mha.get_causal_mask(CONTEXT_LEN, batch_size)
+    
+    jax_out = jax_mha(state, x_jnp, x_jnp, x_jnp, mask=causal_mask_jax)
+
+    # Torch
+    # Invert, and only use 2d, since by pytorch standard true => mask
+    causal_mask_torch = torch.from_numpy(np.array(~causal_mask_jax[:, :, 0, 0])).bool()
+
+    with torch.no_grad():
+        out_torch = mha_torch(x, x, x, attn_mask=causal_mask_torch, need_weights=False)[0].detach().numpy()
+
+
+    assert np.allclose(jax_out, out_torch, atol=TOL), f"jax_out = {jax_out}, out_torch = {out_torch}"
