@@ -176,3 +176,20 @@ def test_batchnorm_1d_train(B: int, N: int):
     logger.log(LOG_LEVEL, f"Diff: {np.linalg.norm(y_torch - y):.2e}")
     assert np.allclose(y, y_torch, atol=TOL), f"y = {y}, y_torch = {y_torch}"
 
+@pytest.mark.parametrize("norm_dims", [(3,), (2, 3)])
+def test_layernorm(norm_dims: tuple):
+    # assume input: (context_len, batch_size, emb_dim)
+    x = torch.randn(4, 2, 3, requires_grad=False) * 10
+
+    torch_ln = torch.nn.LayerNorm(norm_dims)
+    with torch.no_grad():
+        y_torch = torch_ln(x).numpy()
+
+    # Jax
+    jax_ln = LayerNorm(norm_dims)
+    state = to_jax_state(torch_ln)
+
+    y_jax = jax_ln(state, jnp.array(x))
+    
+    logger.log(LOG_LEVEL, f"Diff: {np.linalg.norm(y_torch - y_jax):.2e}")
+    assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"

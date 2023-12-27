@@ -73,15 +73,20 @@ class LayerNorm:
     # Do we need to pass the state as output?
     def forward(self, state: LayerNormState, x: jax.Array) -> jax.Array:
         assert x.shape[-len(self.norm_dims):] == self.norm_dims, f"Input shape {x.shape} must have last dimension matching norm_dims: {self.norm_dims}"
+        # x.shape: (*, *norm_dims), e.g. (context_len, batch_size, emb_size)
 
         # compute mean over last n = len(self.norm_dims) dimensions
         axes_to_reduce = tuple(range(-len(self.norm_dims), 0)) # (-n, ..., -1)
         means = jnp.mean(x, axis=axes_to_reduce, keepdims=True)
 
         # biased estimator
-        vars = jnp.var(x, axis=axes_to_reduce, keepdims=True, ddof=1)
+        vars = jnp.var(x, axis=axes_to_reduce, keepdims=True)
         x_norm = (x - means) / jnp.sqrt(vars + self.eps)
         return state.gamma * x_norm + state.beta
+
+    def __call__(self, state: LayerNormState, x: jax.Array) -> jax.Array:
+        # TODO: Vectorize with vmap
+        return self.forward(state, x)
         
 
 class Linear:
@@ -294,6 +299,9 @@ def to_jax_state(torch_module: torch.nn.Module) -> Type[NamedTupleSubclass]:
     elif isinstance(torch_module, torch.nn.Linear):
         weight, bias = jnp.array(torch_module.weight.detach()), jnp.array(torch_module.bias.detach()) if torch_module.bias is not None else None
         return LinearState(weight, bias)
+
+    elif isinstance(torch_module, torch.nn.LayerNorm):
+        return LayerNormState(jnp.array(torch_module.weight.detach()), jnp.array(torch_module.bias.detach()))
 
     else:
         raise NotImplementedError(f"to_jax_state not implemented for {type(torch_module)}")
