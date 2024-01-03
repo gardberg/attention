@@ -42,8 +42,8 @@ If the same key is split in two different places, does it result in the same sub
 - [ ] Switch to using `poetry` for dependencies
 - [x] Attention Masking
 - [x] Layer Norm
-- [ ] Dropout
-- [ ] Positional Encoding
+- [x] Dropout
+- [x] Positional Encoding
 - [ ] Tokenizer
 - [ ] Encoder
 - [ ] Decoder

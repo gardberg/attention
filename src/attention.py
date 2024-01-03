@@ -1,10 +1,9 @@
 import jax.numpy as jnp
 import jax
-import numpy as np
 from jax import random, vmap
 from typing import Tuple, NamedTuple, Union
 from utils import LOG_LEVEL, get_logger
-from act import softmax
+from act import *
 from states import *
 from typing import NamedTuple, TypeVar, Type
 import torch
@@ -303,11 +302,31 @@ class MultiHeadAttention:
 
 
 class PositionalEncoding:
-    def __init__(self, emb_size: int, dropout_prob: float = 0, max_len: int = 5000):
+    def __init__(self, emb_size: int, dropout: float=0.0, max_len: int=5000):
         self.emb_size = emb_size
-        self.dropout_prob = dropout_prob
+        self.dropout = dropout
         self.max_len = max_len
 
+        self.embeds = self._create_embeds()
+        
+    def _create_embeds(self):
+        # create embeds which is broadcastable with input x
+        position = jnp.arange(self.max_len)
+        position = jnp.expand_dims(position, axis=1)
+
+        # Assumes emb_size to be big enough
+        div_term = jnp.exp(jnp.arange(0, self.emb_size, 2) * (-jnp.log(10000.0) / self.emb_size))
+        pe = jnp.zeros((self.max_len, 1, self.emb_size))
+        pe = pe.at[:, 0, 0::2].set(jnp.sin(position * div_term))
+        pe = pe.at[:, 0, 1::2].set(jnp.cos(position * div_term))
+        return pe
+
+    def __call__(self, x: jax.Array, rng: jax.Array, training: bool=True) -> Tuple[jax.Array, jax.Array]:
+        # x.shape: (context_len, batch_size, embed_dim)
+        assert len(x.shape) == 3
+        x = x + self.embeds[:x.shape[0]]
+        return dropout(x, self.dropout, rng, training)
+ 
 
 # TODO: Move into separate file
 # Requires torch import, which is a bit heavy
