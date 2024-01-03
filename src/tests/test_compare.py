@@ -176,6 +176,7 @@ def test_batchnorm_1d_train(B: int, N: int):
     logger.log(LOG_LEVEL, f"Diff: {np.linalg.norm(y_torch - y):.2e}")
     assert np.allclose(y, y_torch, atol=TOL), f"y = {y}, y_torch = {y_torch}"
 
+
 @pytest.mark.parametrize("norm_dims", [(3,), (2, 3)])
 def test_layernorm(norm_dims: tuple):
     # assume input: (context_len, batch_size, emb_dim)
@@ -190,6 +191,41 @@ def test_layernorm(norm_dims: tuple):
     state = to_jax_state(torch_ln)
 
     y_jax = jax_ln(state, jnp.array(x))
-    
+
     logger.log(LOG_LEVEL, f"Diff: {np.linalg.norm(y_torch - y_jax):.2e}")
+    assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
+
+
+@pytest.mark.parametrize("p", [0.1, 0.5, 0.0, 0.8])
+def test_dropout_train(p: float):
+    x = torch.ones(4, 2, 3, requires_grad=False)
+
+    # Torch
+    with torch.no_grad():
+        y_torch = torch.nn.functional.dropout(x, p=p, training=True).numpy()
+
+    # Jax
+    rng = jax.random.PRNGKey(0)
+    y_jax, rng = dropout(jnp.array(x), p, rng, training=True)
+
+    assert y_torch.shape == y_jax.shape, f"Got {y_jax.shape}, expected {y_torch.shape}"
+    # assert y_jax is not all ones
+    if p == 0.0:
+        assert np.allclose(y_jax, x), f"y_torch = {y_torch}, y = {y_jax}"
+    else:
+        assert not np.allclose(y_jax, x), f"y_torch = {y_torch}, y = {y_jax}"
+
+
+@pytest.mark.parametrize("p", [0.1, 0.5, 0.0, 0.8])
+def test_dropout_eval(p: float):
+    x = torch.ones(4, 2, 3, requires_grad=False)
+
+    # Torch
+    with torch.no_grad():
+        y_torch = torch.nn.functional.dropout(x, p=p, training=False).numpy()
+
+    # Jax
+    rng = jax.random.PRNGKey(0)
+    y_jax, rng = dropout(jnp.array(x), p, rng, training=False)
+
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"

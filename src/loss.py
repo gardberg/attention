@@ -2,13 +2,16 @@ import jax.numpy as jnp
 import jax
 from typing import Callable
 
+
 class Loss:
     def __init__(self, reduction: str = "mean"):
         if reduction not in ["mean", "sum", "none"]:
-            raise ValueError(f"Reduction must be one of 'mean', 'sum', or 'none', got {reduction}")
+            raise ValueError(
+                f"Reduction must be one of 'mean', 'sum', or 'none', got {reduction}"
+            )
         self.reduction = reduction
         self.reduction_fn = self.get_reduction_fn()
-        
+
     def get_reduction_fn(self) -> Callable:
         if self.reduction == "mean":
             return jnp.mean
@@ -31,4 +34,6 @@ class BCELoss(Loss):
         super().__init__(reduction)
 
     def __call__(self, input: jax.Array, target: jax.Array):
-        return self.reduction_fn(-(target * jnp.log(input) + (1 - target) * jnp.log(1 - input)))
+        return self.reduction_fn(
+            -(target * jnp.log(input) + (1 - target) * jnp.log(1 - input))
+        )

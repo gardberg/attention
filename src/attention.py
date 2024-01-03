@@ -49,11 +49,13 @@ def batchnorm_1d(
 
     return state.gamma * x_norm + state.beta, new_state
 
-# (context_len, batch_size, emb_dim) 
+
+# (context_len, batch_size, emb_dim)
 class LayerNorm:
     def __init__(self, norm_dims: Tuple[int, ...], eps=1e-5):
-
-        assert isinstance(norm_dims, tuple), f"norm_dims must be tuple, got {type(norm_dims)}"
+        assert isinstance(
+            norm_dims, tuple
+        ), f"norm_dims must be tuple, got {type(norm_dims)}"
         self.norm_dims = norm_dims
         # tuple of dims to normalize over
         # Example: x.shape = (2, 3, 1), norm_dims = (3, 1)
@@ -68,18 +70,19 @@ class LayerNorm:
         return LayerNormState(
             gamma=jnp.ones(self.norm_dims),
             beta=jnp.zeros(self.norm_dims),
-        ) 
+        )
 
     # Do we need to pass the state as output?
     def forward(self, state: LayerNormState, x: jax.Array) -> jax.Array:
-        assert x.shape[-len(self.norm_dims):] == self.norm_dims, f"Input shape {x.shape} must have last dimension matching norm_dims: {self.norm_dims}"
+        assert (
+            x.shape[-len(self.norm_dims) :] == self.norm_dims
+        ), f"Input shape {x.shape} must have last dimension matching norm_dims: {self.norm_dims}"
         # x.shape: (*, *norm_dims), e.g. (context_len, batch_size, emb_size)
 
         # compute mean over last n = len(self.norm_dims) dimensions
-        axes_to_reduce = tuple(range(-len(self.norm_dims), 0)) # (-n, ..., -1)
+        axes_to_reduce = tuple(range(-len(self.norm_dims), 0))  # (-n, ..., -1)
         means = jnp.mean(x, axis=axes_to_reduce, keepdims=True)
 
-        # biased estimator
         vars = jnp.var(x, axis=axes_to_reduce, keepdims=True)
         x_norm = (x - means) / jnp.sqrt(vars + self.eps)
         return state.gamma * x_norm + state.beta
@@ -87,20 +90,27 @@ class LayerNorm:
     def __call__(self, state: LayerNormState, x: jax.Array) -> jax.Array:
         # TODO: Vectorize with vmap
         return self.forward(state, x)
-        
+
 
 class Linear:
-    def __init__(self, n_in: int, n_out: int, bias: bool = True, batch_dim: int=0):
+    def __init__(self, n_in: int, n_out: int, bias: bool = True, batch_dim: int = 0):
         self.n_in = n_in
         self.n_out = n_out
         self.bias = bias
         self.batch_dim = batch_dim
 
     def init_state(self, rng: jax.Array) -> LinearState:
+        # Do we need to return a key here to ensure that the original one is not used again?
         w_key, b_key = random.split(rng)
         init_range = 1 / jnp.sqrt(self.n_in)
-        w = random.uniform(w_key, (self.n_out, self.n_in), minval=-init_range, maxval=init_range)
-        b = random.uniform(b_key, (self.n_out,), minval=-init_range, maxval=init_range) if self.bias else None
+        w = random.uniform(
+            w_key, (self.n_out, self.n_in), minval=-init_range, maxval=init_range
+        )
+        b = (
+            random.uniform(b_key, (self.n_out,), minval=-init_range, maxval=init_range)
+            if self.bias
+            else None
+        )
         return LinearState(w, b)
 
     def __call__(self, state: LinearState, x: jax.Array) -> jax.Array:
@@ -112,7 +122,7 @@ class Linear:
         else:
             return self._forward(state, x)
 
-    def _forward(self, state: LinearState, x: jax.Array) -> jax.Array: 
+    def _forward(self, state: LinearState, x: jax.Array) -> jax.Array:
         """
         Non-batched forward pass
 
@@ -162,7 +172,6 @@ class PreAttention:
             return self.forward(weight_matrix, x)
 
 
-
 class MultiHeadAttention:
     """
     Attention with n_heads heads
@@ -175,7 +184,7 @@ class MultiHeadAttention:
         emb_size:   Total size of query, key and value. Will be split over the number of heads
         n_heads:    Number of individual attention heads
         bias:       Whether to use bias in the output linear layer
-        v_bias:     Whether to use bias in the value linear layer 
+        v_bias:     Whether to use bias in the value linear layer
         """
 
         self.n_heads = n_heads
@@ -209,9 +218,13 @@ class MultiHeadAttention:
         mask = jnp.tile(base_mask[:, :, None, None], (1, 1, batch_size, self.n_heads))
         return mask
 
-    
     def forward(
-        self, state: MultiHeadAttentionState, q: jax.Array, k: jax.Array, v: jax.Array, mask: jax.Array = None 
+        self,
+        state: MultiHeadAttentionState,
+        q: jax.Array,
+        k: jax.Array,
+        v: jax.Array,
+        mask: jax.Array = None,
     ) -> jax.Array:
         # q, k, v shape: (context_len, batch_size, emb_size)
 
@@ -229,7 +242,7 @@ class MultiHeadAttention:
 
         # shape: (context_len, batch_size, n_heads, d_k)
         # calc q * k^T = s with shape (contex_len, context_len, batch_size, n_heads)
-    
+
         scores = jnp.einsum("cbhd,Cbhd->cCbh", query, key)
 
         self.debug_states["scores"] = scores
@@ -248,12 +261,14 @@ class MultiHeadAttention:
 
         # TODO: At the moment False => mask. Pytorch default: True => mask. Switch?
         if mask is not None:
-            assert mask.shape == scores.shape, f"Mask shape {mask.shape} must match scores shape {scores.shape}. To create a mask, use MultiHeadAttention.get_causal_mask()"
+            assert (
+                mask.shape == scores.shape
+            ), f"Mask shape {mask.shape} must match scores shape {scores.shape}. To create a mask, use MultiHeadAttention.get_causal_mask()"
             # replace values in scores with float('-inf') where mask is false
             scaled_scores = jnp.where(mask, scaled_scores, float("-inf"))
-            
+
         self.debug_states["masked_scaled_scores"] = scaled_scores
-        
+
         s2 = softmax(scaled_scores, dim=1)
 
         self.debug_states["softmax"] = s2
@@ -276,13 +291,28 @@ class MultiHeadAttention:
         # out.shape: (context_len, batch_size, emb_dim)
         return out
 
-    def __call__(self, state: MultiHeadAttentionState, q: jax.Array, k: jax.Array, v: jax.Array, mask: jax.Array = None) -> jax.Array:
-        return self.forward(state, q, k, v, mask) 
-                 
+    def __call__(
+        self,
+        state: MultiHeadAttentionState,
+        q: jax.Array,
+        k: jax.Array,
+        v: jax.Array,
+        mask: jax.Array = None,
+    ) -> jax.Array:
+        return self.forward(state, q, k, v, mask)
+
+
+class PositionalEncoding:
+    def __init__(self, emb_size: int, dropout_prob: float = 0, max_len: int = 5000):
+        self.emb_size = emb_size
+        self.dropout_prob = dropout_prob
+        self.max_len = max_len
+
 
 # TODO: Move into separate file
 # Requires torch import, which is a bit heavy
 NamedTupleSubclass = TypeVar("NamedTupleSubclass", bound=NamedTuple)
+
 
 def to_jax_state(torch_module: torch.nn.Module) -> Type[NamedTupleSubclass]:
     if isinstance(torch_module, torch.nn.MultiheadAttention):
@@ -291,18 +321,35 @@ def to_jax_state(torch_module: torch.nn.Module) -> Type[NamedTupleSubclass]:
         w_out, b_out = torch_module.out_proj.weight, torch_module.out_proj.bias
 
         # Unstack stacked q, k, and v weights
-        linear_states = [LinearState(w_in[i*emb_size:(i+1)*emb_size], b_in[i*emb_size:(i+1)*emb_size] if b_in is not None else None) for i in range(3)]
+        linear_states = [
+            LinearState(
+                w_in[i * emb_size : (i + 1) * emb_size],
+                b_in[i * emb_size : (i + 1) * emb_size] if b_in is not None else None,
+            )
+            for i in range(3)
+        ]
         linear_states.append(LinearState(w_out, b_out if b_out is not None else None))
 
-        return MultiHeadAttentionState(*(jax.tree_map(lambda x: jnp.array(x.detach()), linear_states)))
+        return MultiHeadAttentionState(
+            *(jax.tree_map(lambda x: jnp.array(x.detach()), linear_states))
+        )
 
     elif isinstance(torch_module, torch.nn.Linear):
-        weight, bias = jnp.array(torch_module.weight.detach()), jnp.array(torch_module.bias.detach()) if torch_module.bias is not None else None
+        weight, bias = (
+            jnp.array(torch_module.weight.detach()),
+            jnp.array(torch_module.bias.detach())
+            if torch_module.bias is not None
+            else None,
+        )
         return LinearState(weight, bias)
 
     elif isinstance(torch_module, torch.nn.LayerNorm):
-        return LayerNormState(jnp.array(torch_module.weight.detach()), jnp.array(torch_module.bias.detach()))
+        return LayerNormState(
+            jnp.array(torch_module.weight.detach()),
+            jnp.array(torch_module.bias.detach()),
+        )
 
     else:
-        raise NotImplementedError(f"to_jax_state not implemented for {type(torch_module)}")
-
+        raise NotImplementedError(
+            f"to_jax_state not implemented for {type(torch_module)}"
+        )

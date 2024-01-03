@@ -26,6 +26,9 @@ Filter for a specific test to run with `pytest -k test_name`
 
 ### TODO
 
+- [ ] Ensure split is used on all rng keys in functions
+If the same key is split in two different places, does it result in the same subkeys?
+
 - [x] Implement softmax
 - [x] Implement network
 - [x] Implement batch norm
@@ -38,7 +41,8 @@ Filter for a specific test to run with `pytest -k test_name`
 
 - [ ] Switch to using `poetry` for dependencies
 - [x] Attention Masking
-- [ ] Layer Norm
+- [x] Layer Norm
+- [ ] Dropout
 - [ ] Positional Encoding
 - [ ] Tokenizer
 - [ ] Encoder
@@ -47,10 +51,11 @@ Filter for a specific test to run with `pytest -k test_name`
 
 #### Improvements
 
+- [ ] Vectorize stuff with vmap
 - [ ] Rotational Positional Encoding
 - [ ] Windowed attention with recomputation
 - [ ] Streaming LLM attention
-- [ ] Grouped Query Attention?
+- [ ] Grouped Query Attention
 
 #### Using Poetry
 
