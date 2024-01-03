@@ -39,7 +39,7 @@ If the same key is split in two different places, does it result in the same sub
 
 #### GPT
 
-- [ ] Switch to using `poetry` for dependencies
+- [x] Switch to using `poetry` for dependencies
 - [x] Attention Masking
 - [x] Layer Norm
 - [x] Dropout
@@ -59,7 +59,21 @@ If the same key is split in two different places, does it result in the same sub
 
 #### Using Poetry
 
+Make sure local venv is activated, which contains poetry:
+
+`source .venv/Scripts/activate` - Windows
+
 `poetry add <package>`
+
+`poetry check` - check for errors in `pyproject.toml`
+
+`poetry run pytest` - use local venv to run pytest
+
+`poetry install` - install dependencies specified in `pyproject.toml`
+
+Have added pytest config options to `pyproject.toml` so that they are set by default. E.g. `log_cli = true` and `log_cli_level = 25` to show custom logs.
+
+- [ ] Is it worth creating a dev environment in poetry?
 
 ### Links
 
