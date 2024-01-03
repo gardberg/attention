@@ -29,6 +29,20 @@ def sigmoid(x: jax.Array) -> jax.Array:
 def relu(x: jax.Array) -> jax.Array:
     return jnp.maximum(x, 0)
 
+    
+def swish(x: jax.Array, beta: float = 1) -> jax.Array:
+    return x * sigmoid(beta * x)
+
+
+def gelu(x: jax.Array) -> jax.Array:
+    return x * sigmoid(1.702 * x)
+
+    
+# componentwise prod of sigmoid(L1) and L2. L1, L2 indep. affine transforms of x
+def glu():
+    # TODO
+    pass
+
 
 def dropout(
     x: jax.Array, prob: float, rng: jax.Array, training: bool = True

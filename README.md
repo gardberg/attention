@@ -27,6 +27,7 @@ Filter for a specific test to run with `pytest -k test_name`
 ### TODO
 
 - [ ] Ensure split is used on all rng keys in functions
+
 If the same key is split in two different places, does it result in the same subkeys?
 
 - [x] Implement softmax
@@ -51,11 +52,14 @@ If the same key is split in two different places, does it result in the same sub
 
 #### Improvements
 
-- [ ] Vectorize stuff with vmap
+- [ ] Prenorm with RMSNorm
+- [ ] SwiGLU layer
 - [ ] Rotational Positional Encoding
+- [ ] Grouped Query Attention
+
+- [ ] Vectorize stuff with vmap
 - [ ] Windowed attention with recomputation
 - [ ] Streaming LLM attention
-- [ ] Grouped Query Attention
 
 #### Using Poetry
 
@@ -110,3 +114,5 @@ Reformer: The Efficient Transformer https://arxiv.org/abs/2001.04451
 RoFormer: Enhanced Transformer with Rotary Position Embedding https://arxiv.org/abs/2104.09864
 
 Fast Transformer Decoding: One Write-Head is All You Need https://arxiv.org/abs/1911.02150 (Multi-Query Attention)
+
+Llama2: https://arxiv.org/abs/2307.09288
