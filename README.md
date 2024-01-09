@@ -5,14 +5,18 @@ Exploring attention and related concepts in Jax.
 
 ### Demonstrating quadratic time and memory scaling
 
-<img src="images/attention_time_scaling.png" width="450" height="270" />
+<div style="display: flex; justify-content: space-between;">
+    <img src="images/attention_time_scaling.png" width="400" height="250" />
+    <img src="images/attention_memory_scaling.png" width="400" height="250" />
+</div>
 
 ### Dense example
 
 See `examples/example_dense.ipynb`.
 
-<img src="images/decision_boundary.gif" width="450" height="270" />
-
+<div style="text-align:center;">
+    <img src="images/decision_boundary.gif" width="470" height="330" />
+</div>
 ### Setup
 
 *Python version:* 3.11.6
@@ -106,6 +110,8 @@ Annotated pytorch implementation https://nn.labml.ai/transformers/mha.html
 Attention explained https://storrs.io/attention/
 
 https://math.stackexchange.com/questions/63074/is-there-a-3-dimensional-matrix-by-matrix-product
+
+Self-attention Does Not Need O(n^2) Memory https://arxiv.org/abs/2112.05682
 
 #### Modern Transformer
 
