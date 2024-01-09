@@ -17,6 +17,7 @@ See `examples/example_dense.ipynb`.
 <div style="text-align:center;">
     <img src="images/decision_boundary.gif" width="470" height="330" />
 </div>
+
 ### Setup
 
 *Python version:* 3.11.6
