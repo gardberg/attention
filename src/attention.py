@@ -1,7 +1,7 @@
 import jax.numpy as jnp
 import jax
 from jax import random, vmap
-from typing import Tuple, NamedTuple, Union
+from typing import Callable, Tuple, NamedTuple, Union
 from utils import LOG_LEVEL, get_logger
 from act import *
 from states import *
@@ -51,11 +51,11 @@ def batchnorm_1d(
 
 # (context_len, batch_size, emb_dim)
 class LayerNorm:
-    def __init__(self, norm_dims: Tuple[int, ...], eps=1e-5):
+    def __init__(self, norm_dims: Union[Tuple[int, ...], int], eps=1e-5):
         assert isinstance(
-            norm_dims, tuple
-        ), f"norm_dims must be tuple, got {type(norm_dims)}"
-        self.norm_dims = norm_dims
+            norm_dims, (tuple, int)
+        ), f"norm_dims must be tuple or int, got {type(norm_dims)}"
+        self.norm_dims = (norm_dims) if isinstance(norm_dims, int) else norm_dims
         # tuple of dims to normalize over
         # Example: x.shape = (2, 3, 1), norm_dims = (3, 1)
         # => Normalize over last 2 dims
@@ -63,9 +63,13 @@ class LayerNorm:
         # x.shape = (2, 3), norm_dims = (3,)
         # => Normalize over last dim
 
+        # For example, for x: (context_len, batch_size, embed_dim)
+        # you'd normally normalize over embed_dim:
+        # LayerNorm((embed_dim))
+
         self.eps = eps
 
-    def init_state(self):
+    def init_state(self, rng: jax.Array=None):
         return LayerNormState(
             gamma=jnp.ones(self.norm_dims),
             beta=jnp.zeros(self.norm_dims),
@@ -131,6 +135,25 @@ class Linear:
         dot = jnp.matmul(x, state.weights.T)
         return dot + state.bias if self.bias else dot
 
+        
+class FeedForward:
+    def __init__(self, n_in: int, d_ff: int, act: Callable=relu, dropout: float=0.0):
+        self.layer1 = Linear(n_in, d_ff)
+        self.layer2 = Linear(d_ff, n_in)
+        self.act = act
+        self.dropout = dropout
+
+    def init_state(self, rng: jax.Array) -> FeedForwardState:
+        rng1, rng2 = random.split(rng)
+        return FeedForwardState(
+            self.layer1.init_state(rng1),
+            self.layer2.init_state(rng2),
+        )
+
+    def __call__(self, state: FeedForwardState, x: jax.Array, rng: jax.Array) -> jax.Array:
+        x = self.act(self.layer1(state.linear1_state, x))
+        x = dropout(x, self.dropout, rng)
+        return self.layer2(state.linear2_state, x)
 
 class PreAttention:
     """

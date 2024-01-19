@@ -21,9 +21,22 @@ class LinearState(NamedTuple):
     weights: jax.Array
     bias: jax.Array
 
+    
+class FeedForwardState(NamedTuple):
+    linear1_state: LinearState
+    linear2_state: LinearState
+
 
 class MultiHeadAttentionState(NamedTuple):
     query_state: LinearState
     key_state: LinearState
     value_state: LinearState
     output_state: LinearState
+
+
+class EncoderLayerState(NamedTuple):
+    layer_norm1_state: LayerNormState
+    self_attn_state: MultiHeadAttentionState
+    layer_norm2_state: LayerNormState
+    feed_forward_state: FeedForwardState
+    training: bool=True

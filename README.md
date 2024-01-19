@@ -50,7 +50,7 @@ If the same key is split in two different places, does it result in the same sub
 - [x] Layer Norm
 - [x] Dropout
 - [x] Positional Encoding
-- [ ] Tokenizer
+- [x] Tokenizer (tiktoken)
 - [ ] Encoder
 - [ ] Decoder
 - [ ] Transformer
@@ -107,6 +107,7 @@ Annotated transformer: https://nlp.seas.harvard.edu/2018/04/03/attention.html
 Pytorch implementation https://github.com/pytorch/pytorch/blob/main/torch/nn/functional.py#L5101
 
 Annotated pytorch implementation https://nn.labml.ai/transformers/mha.html
+https://nn.labml.ai/transformers/models.html
 
 Attention explained https://storrs.io/attention/
 
