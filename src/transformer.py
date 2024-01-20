@@ -29,9 +29,9 @@ class EncoderLayer:
     def init_state(self, rng: jax.Array) -> EncoderLayerState:
         rngs = jax.random.split(rng, 4)
         return EncoderLayerState(
-            self.layer_norm1.init_state(rngs[0]),
-            self.self_attn.init_state(rngs[1]),
-            self.layer_norm2.init_state(rngs[2]),
-            self.feed_forward.init_state(rngs[3]),
+            layer_norm1_state=self.layer_norm1.init_state(rngs[0]),
+            self_attn_state=self.self_attn.init_state(rngs[1]),
+            layer_norm2_state=self.layer_norm2.init_state(rngs[2]),
+            feed_forward_state=self.feed_forward.init_state(rngs[3]),
             training=True
         )

@@ -1,6 +1,8 @@
 import logging
 import os
 import jax
+from typing import Union
+from attention import NamedTupleSubclass
 
 os.environ["TIKTOKEN_CACHE_DIR"] = "../.cache"
 import tiktoken
@@ -43,6 +45,23 @@ class Tokenizer:
     # TODO: How do we handle batched array?
     def decode(self, enc: jax.Array) -> str:
         return self.encoding.decode(enc.tolist())
+
+        
+def state_to_str(state: Union[NamedTupleSubclass, jax.Array, bool], indent=0):
+    # state is a NamedTuple which contains several other NamedTuples, jax.Arrays, or bools
+
+    if state is None: return "None"
+
+    if isinstance(state, jax.Array): return f"{state.shape}"
+
+    if isinstance(state, bool): return state
+
+    result = [f"{state.__class__.__name__}:"] if state else []
+    for name, value in state._asdict().items():
+        field_str = f"\t{name}: " if indent > 0 else f"{name}: "
+        result.append(f"\t{field_str}{state_to_str(value, indent + 1)}")
+
+    return "\n".join(result)
 
 
 if __name__ == "__main__":

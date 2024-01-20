@@ -39,4 +39,4 @@ class EncoderLayerState(NamedTuple):
     self_attn_state: MultiHeadAttentionState
     layer_norm2_state: LayerNormState
     feed_forward_state: FeedForwardState
-    training: bool=True
+    training: bool
