@@ -3,12 +3,10 @@ import jax
 import jax.numpy as jnp
 import torch
 from attention import *
-from utils import LOG_LEVEL, get_logger
+from log_utils import logger
 import pytest
 from typing import Tuple
 from loss import MSELoss
-
-logger = get_logger()
 
 np.random.seed(1337)
 rng = jax.random.PRNGKey(0)
@@ -42,7 +40,7 @@ def test_dense_grad(n_in: int, n_out: int, batch_size: int):
     torch_loss = torch_mse_loss(y_torch, y)
 
     torch_loss.backward()
-    logger.log(LOG_LEVEL, torch_loss)
+    logger.debug(torch_loss)
     grads_pytorch = [
         torch_linear.weight.grad.numpy(),
         torch_linear.bias.grad.numpy(),
@@ -64,7 +62,7 @@ def test_dense_grad(n_in: int, n_out: int, batch_size: int):
     grads = jax.grad(loss, argnums=0)(state, jnp.array(x_in), jnp.array(y))
 
     for grad_jax, grad_pytorch in zip(grads, grads_pytorch):
-        logger.log(LOG_LEVEL, f"grad_jax: {grad_jax}, grad_pytorch: {grad_pytorch}")
+        logger.debug(f"grad_jax: {grad_jax}, grad_pytorch: {grad_pytorch}")
         assert np.allclose(
             grad_jax, grad_pytorch, atol=TOL
         ), f"grad_jax = {grad_jax}, grad_pytorch = {grad_pytorch}"

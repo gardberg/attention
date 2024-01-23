@@ -3,11 +3,9 @@ import jax
 import jax.numpy as jnp
 import torch
 from attention import *
-from utils import LOG_LEVEL, get_logger
+from log_utils import logger
 import pytest
 from typing import Tuple
-
-logger = get_logger()
 
 np.random.seed(1337)
 rng = jax.random.PRNGKey(0)
@@ -43,8 +41,8 @@ def test_pre_attention(emb_size, n_heads, use_bias):
     preattn = PreAttention(n_heads=n_heads, emb_size=emb_size, d_k=d_k, bias=use_bias)
     y_jax = preattn(state, jnp.array(x))
 
-    logger.log(
-        LOG_LEVEL, f"y_torch.shape = {y_torch.shape}, y_jax.shape = {y_jax.shape}"
+    logger.debug(
+        f"y_torch.shape = {y_torch.shape}, y_jax.shape = {y_jax.shape}"
     )
     assert np.allclose(
         y_torch, y_jax, atol=TOL

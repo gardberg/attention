@@ -2,13 +2,12 @@ import jax.numpy as jnp
 import jax
 from jax import random, vmap
 from typing import Callable, Tuple, NamedTuple, Union
-from utils import LOG_LEVEL, get_logger
+from log_utils import logger
 from act import *
 from states import *
 from typing import NamedTuple, TypeVar, Type
 import torch
 
-logger = get_logger()
 
 rng = random.PRNGKey(0)
 
