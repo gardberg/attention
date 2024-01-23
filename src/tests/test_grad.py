@@ -36,7 +36,7 @@ def test_dense_grad(n_in: int, n_out: int, batch_size: int):
     y_torch = torch_linear(x_in)
 
     torch_mse_loss = torch.nn.MSELoss()
-    print(f"torch_mse_loss: {torch_mse_loss}")
+    logger.debug(f"torch_mse_loss: {torch_mse_loss}")
     torch_loss = torch_mse_loss(y_torch, y)
 
     torch_loss.backward()

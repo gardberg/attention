@@ -70,12 +70,12 @@ def test_multihead_attn(n_heads, emb_size, batch_size):
 
     x_jnp = jnp.array(x.detach().numpy())
 
-    print(
+    logger.debug(
         f"Calling jax_mha.forward with x_jnp.shape = {x_jnp.shape} and type = {type(x_jnp)}"
     )
     y_jax = jax_mha.forward(jax_mha_state, x_jnp, x_jnp, x_jnp)
 
-    print(f"y_torch.shape = {y_torch.shape}, y_jax.shape = {y_jax.shape}")
+    logger.debug(f"y_torch.shape = {y_torch.shape}, y_jax.shape = {y_jax.shape}")
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
 
 
