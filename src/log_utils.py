@@ -1,5 +1,6 @@
 import logging
 import os
+
 # Define logger
 DEFAULT_LOG_LEVEL = "INFO"
 LOG_FORMAT = "%(asctime)s %(levelname)s: %(message)s"
@@ -16,8 +17,10 @@ logger = logging.getLogger("attention")
 logger.setLevel(LOG_LEVEL)
 
 curr_log_level = logging.getLevelName(logger.getEffectiveLevel())
-print("Using log level:", curr_log_level)
 
-logger.info("logger.info at level: %s", curr_log_level)
-logger.debug("logger.debug at level: %s", curr_log_level)
-logger.warning("logger.warning at level: %s", curr_log_level)
+if curr_log_level == "DEBUG":
+    logger.debug("Log level set to DEBUG")
+elif curr_log_level == "INFO":
+    logger.info("Log level set to INFO")
+elif curr_log_level == "WARNING":
+    logger.warning("Log level set to WARNING")

@@ -21,7 +21,7 @@ class LinearState(NamedTuple):
     weights: jax.Array
     bias: jax.Array
 
-    
+
 class FeedForwardState(NamedTuple):
     linear1_state: LinearState
     linear2_state: LinearState

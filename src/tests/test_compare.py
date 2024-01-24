@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import torch
 import pytest
 from typing import Tuple
-from test_utils import TorchPositionalEncoding
+from testing_utils import TorchPositionalEncoding
 
 from log_utils import logger
 from attention import *
@@ -228,6 +228,7 @@ def test_dropout_eval(p: float):
     y_jax, rng = dropout(jnp.array(x), p, rng, training=False)
 
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
+
 
 @pytest.mark.parametrize("size", [(4, 2, 16), (1, 1, 16), (16, 1, 512)])
 def test_positional_encoding(size):

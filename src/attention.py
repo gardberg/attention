@@ -9,9 +9,6 @@ from typing import NamedTuple, TypeVar, Type
 import torch
 
 
-rng = random.PRNGKey(0)
-
-
 def batchnorm_1d(
     x: jax.Array, state: BatchNormState, training: bool = True, eps=1e-5
 ) -> Tuple[jax.Array, BatchNormState]:
@@ -68,7 +65,7 @@ class LayerNorm:
 
         self.eps = eps
 
-    def init_state(self, rng: jax.Array=None):
+    def init_state(self, rng: jax.Array = None):
         return LayerNormState(
             gamma=jnp.ones(self.norm_dims),
             beta=jnp.zeros(self.norm_dims),
@@ -134,9 +131,11 @@ class Linear:
         dot = jnp.matmul(x, state.weights.T)
         return dot + state.bias if self.bias else dot
 
-        
+
 class FeedForward:
-    def __init__(self, n_in: int, d_ff: int, act: Callable=relu, dropout: float=0.0):
+    def __init__(
+        self, n_in: int, d_ff: int, act: Callable = relu, dropout: float = 0.0
+    ):
         self.layer1 = Linear(n_in, d_ff)
         self.layer2 = Linear(d_ff, n_in)
         self.act = act
@@ -149,10 +148,13 @@ class FeedForward:
             self.layer2.init_state(rng2),
         )
 
-    def __call__(self, state: FeedForwardState, x: jax.Array, rng: jax.Array) -> jax.Array:
+    def __call__(
+        self, state: FeedForwardState, x: jax.Array, rng: jax.Array
+    ) -> jax.Array:
         x = self.act(self.layer1(state.linear1_state, x))
         x = dropout(x, self.dropout, rng)
         return self.layer2(state.linear2_state, x)
+
 
 class PreAttention:
     """
@@ -324,31 +326,35 @@ class MultiHeadAttention:
 
 
 class PositionalEncoding:
-    def __init__(self, emb_size: int, dropout: float=0.0, max_len: int=5000):
+    def __init__(self, emb_size: int, dropout: float = 0.0, max_len: int = 5000):
         self.emb_size = emb_size
         self.dropout = dropout
         self.max_len = max_len
 
         self.embeds = self._create_embeds()
-        
+
     def _create_embeds(self):
         # create embeds which is broadcastable with input x
         position = jnp.arange(self.max_len)
         position = jnp.expand_dims(position, axis=1)
 
         # Assumes emb_size to be big enough
-        div_term = jnp.exp(jnp.arange(0, self.emb_size, 2) * (-jnp.log(10000.0) / self.emb_size))
+        div_term = jnp.exp(
+            jnp.arange(0, self.emb_size, 2) * (-jnp.log(10000.0) / self.emb_size)
+        )
         pe = jnp.zeros((self.max_len, 1, self.emb_size))
         pe = pe.at[:, 0, 0::2].set(jnp.sin(position * div_term))
         pe = pe.at[:, 0, 1::2].set(jnp.cos(position * div_term))
         return pe
 
-    def __call__(self, x: jax.Array, rng: jax.Array, training: bool=True) -> Tuple[jax.Array, jax.Array]:
+    def __call__(
+        self, x: jax.Array, rng: jax.Array, training: bool = True
+    ) -> Tuple[jax.Array, jax.Array]:
         # x.shape: (context_len, batch_size, embed_dim)
         assert len(x.shape) == 3
-        x = x + self.embeds[:x.shape[0]]
+        x = x + self.embeds[: x.shape[0]]
         return dropout(x, self.dropout, rng, training)
- 
+
 
 # TODO: Move into separate file
 # Requires torch import, which is a bit heavy

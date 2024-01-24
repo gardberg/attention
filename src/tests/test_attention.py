@@ -41,9 +41,7 @@ def test_pre_attention(emb_size, n_heads, use_bias):
     preattn = PreAttention(n_heads=n_heads, emb_size=emb_size, d_k=d_k, bias=use_bias)
     y_jax = preattn(state, jnp.array(x))
 
-    logger.debug(
-        f"y_torch.shape = {y_torch.shape}, y_jax.shape = {y_jax.shape}"
-    )
+    logger.debug(f"y_torch.shape = {y_torch.shape}, y_jax.shape = {y_jax.shape}")
     assert np.allclose(
         y_torch, y_jax, atol=TOL
     ), f"y_torch = {y_torch}, y_jax = {y_jax}"

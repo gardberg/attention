@@ -5,11 +5,12 @@ from attention import NamedTupleSubclass
 
 os.environ["TIKTOKEN_CACHE_DIR"] = "../.cache"
 import tiktoken
-    
+
+
 class Tokenizer:
     # Wrapper class for tiktoken tokenizer
-    
-    def __init__(self, name='cl100k_base'):
+
+    def __init__(self, name="cl100k_base"):
         try:
             self.encoding = tiktoken.get_encoding(name)
         except:
@@ -23,15 +24,18 @@ class Tokenizer:
     def decode(self, enc: jax.Array) -> str:
         return self.encoding.decode(enc.tolist())
 
-        
+
 def state_to_str(state: Union[NamedTupleSubclass, jax.Array, bool], indent=0):
     # state is a NamedTuple which contains several other NamedTuples, jax.Arrays, or bools
 
-    if state is None: return "None"
+    if state is None:
+        return "None"
 
-    if isinstance(state, jax.Array): return f"{state.shape}"
+    if isinstance(state, jax.Array):
+        return f"{state.shape}"
 
-    if isinstance(state, bool): return state
+    if isinstance(state, bool):
+        return state
 
     result = [f"{state.__class__.__name__}:"] if state else []
     for name, value in state._asdict().items():

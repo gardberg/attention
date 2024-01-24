@@ -24,10 +24,9 @@ See `examples/example_dense.ipynb`.
 
 Run tests with `pytest`
 
-Show logs with `pytest --log-level-cli=25` to show custom logs logged with `logger.log(25, "message")`
-It is also set to `25` by default in `pyproject.toml`.
-
 Filter for a specific test to run with `pytest -k test_name`
+
+Enable debug logs with `LOG_LEVEL=DEBUG pytest`
 
 ### TODO
 
@@ -42,6 +41,7 @@ If the same key is split in two different places, does it result in the same sub
 - [x] Implement multi headed attention
 
 - [x] Add tests to compare with pytorch implementations
+- [x] Simplify logging
 
 #### GPT
 
