@@ -124,3 +124,5 @@ RoFormer: Enhanced Transformer with Rotary Position Embedding https://arxiv.org/
 Fast Transformer Decoding: One Write-Head is All You Need https://arxiv.org/abs/1911.02150 (Multi-Query Attention)
 
 Llama2: https://arxiv.org/abs/2307.09288
+
+GLU Variants Improve Transformer: https://arxiv.org/abs/2002.05202

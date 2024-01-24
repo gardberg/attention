@@ -7,11 +7,11 @@ from log_utils import logger
 import pytest
 from typing import Tuple
 from loss import MSELoss
+from testing_utils import TOL
 
 np.random.seed(1337)
 rng = jax.random.PRNGKey(0)
 
-TOL = 1e-6
 
 
 # Check that computed gradients are the same for a linear layer

@@ -6,12 +6,12 @@ from attention import *
 from log_utils import logger
 import pytest
 from typing import Tuple
+from testing_utils import TOL
 
 np.random.seed(1337)
 rng = jax.random.PRNGKey(0)
 torch.manual_seed(0)
 
-TOL = 1e-6
 CONTEXT_LEN = 3
 
 

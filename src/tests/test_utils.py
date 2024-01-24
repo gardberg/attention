@@ -1,6 +1,7 @@
 from utils import *
 import pytest
 import jax.numpy as jnp
+from testing_utils import TOL
 
 
 @pytest.mark.parametrize(("text", "enc"), [("Hello, world!", [9906, 11, 1917, 0])])

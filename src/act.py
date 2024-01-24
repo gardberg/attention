@@ -30,6 +30,7 @@ def relu(x: jax.Array) -> jax.Array:
     return jnp.maximum(x, 0)
 
 
+# aka silu
 def swish(x: jax.Array, beta: float = 1) -> jax.Array:
     return x * sigmoid(beta * x)
 
@@ -39,10 +40,22 @@ def gelu(x: jax.Array) -> jax.Array:
 
 
 # componentwise prod of sigmoid(L1) and L2. L1, L2 indep. affine transforms of x
-def glu():
-    # TODO
-    pass
+def glu(x: jax.Array, dim=-1) -> jax.Array:
+    """
+    x.shape: (..., 2d, ...)
+    dim: dimension to split on
+    output.shape: (..., d, ...)
+    """
+    assert x.shape[dim] % 2 == 0, f"Dimension {dim} must be even, got {x.shape[dim]}"
+    mid = x.shape[dim] // 2
+    x1, x2 = jnp.split(x, [mid], axis=dim)
+    return x1 * sigmoid(x2)
 
+def swiglu(x: jax.Array, dim=-1) -> jax.Array:
+    assert x.shape[dim] % 2 == 0, f"Dimension {dim} must be even, got {x.shape[dim]}"
+    mid = x.shape[dim] // 2
+    x1, x2 = jnp.split(x, [mid], axis=dim)
+    return x1 * swish(x2)
 
 def dropout(
     x: jax.Array, prob: float, rng: jax.Array, training: bool = True

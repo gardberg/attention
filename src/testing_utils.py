@@ -1,9 +1,10 @@
 import torch
 import math
 from torch import nn, Tensor
+import torch.nn.functional as F
 
 # Code for usage in tests
-
+TOL = 1e-6
 
 class TorchPositionalEncoding(nn.Module):
     def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
@@ -26,3 +27,9 @@ class TorchPositionalEncoding(nn.Module):
         """
         x = x + self.pe[: x.size(0)]
         return self.dropout(x)
+
+
+class SwiGLU(nn.Module):
+    def forward(self, x: Tensor, dim: int) -> Tensor:
+        x, gate = x.chunk(2, dim=dim)
+        return F.silu(gate) * x
