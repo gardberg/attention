@@ -13,7 +13,6 @@ np.random.seed(1337)
 rng = jax.random.PRNGKey(0)
 
 
-
 # Check that computed gradients are the same for a linear layer
 @pytest.mark.parametrize("n_in, n_out, batch_size", [(1, 1, 1), (2, 2, 2)])
 def test_dense_grad(n_in: int, n_out: int, batch_size: int):

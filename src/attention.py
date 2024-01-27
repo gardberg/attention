@@ -92,11 +92,10 @@ class LayerNorm:
 
 
 class RMSNorm:
-    
     def __init__(self, norm_dims: int, eps=1e-5):
-        self.norm_dim = norm_dims # size of last dim to normalize over
+        self.norm_dim = norm_dims  # size of last dim to normalize over
         self.eps = eps
-        
+
     def init_state(self, rng: jax.Array = None):
         return RMSNormState(
             gamma=jnp.ones(self.norm_dim),
@@ -108,7 +107,7 @@ class RMSNorm:
 
     def __call__(self, state: RMSNormState, x: jax.Array) -> jax.Array:
         return self.forward(state, x)
-        
+
 
 class Linear:
     def __init__(self, n_in: int, n_out: int, bias: bool = True, batch_dim: int = 0):

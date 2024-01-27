@@ -51,11 +51,13 @@ def glu(x: jax.Array, dim=-1) -> jax.Array:
     x1, x2 = jnp.split(x, [mid], axis=dim)
     return x1 * sigmoid(x2)
 
+
 def swiglu(x: jax.Array, dim=-1) -> jax.Array:
     assert x.shape[dim] % 2 == 0, f"Dimension {dim} must be even, got {x.shape[dim]}"
     mid = x.shape[dim] // 2
     x1, x2 = jnp.split(x, [mid], axis=dim)
     return x1 * swish(x2)
+
 
 def dropout(
     x: jax.Array, prob: float, rng: jax.Array, training: bool = True

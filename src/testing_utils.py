@@ -6,6 +6,7 @@ import torch.nn.functional as F
 # Code for usage in tests
 TOL = 1e-6
 
+
 class TorchPositionalEncoding(nn.Module):
     def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
         super().__init__()
@@ -37,7 +38,7 @@ class SwiGLU(nn.Module):
 
 # https://github.com/bzhangGo/rmsnorm/blob/master/rmsnorm_torch.py
 class TRMSNorm(nn.Module):
-    def __init__(self, d, p=-1., eps=1e-8, bias=False):
+    def __init__(self, d, p=-1.0, eps=1e-8, bias=False):
         """
             Root Mean Square Layer Normalization
         :param d: model size
@@ -61,7 +62,7 @@ class TRMSNorm(nn.Module):
             self.register_parameter("offset", self.offset)
 
     def forward(self, x):
-        if self.p < 0. or self.p > 1.:
+        if self.p < 0.0 or self.p > 1.0:
             norm_x = x.norm(2, dim=-1, keepdim=True)
             d_x = self.d
         else:
@@ -71,7 +72,7 @@ class TRMSNorm(nn.Module):
             norm_x = partial_x.norm(2, dim=-1, keepdim=True)
             d_x = partial_size
 
-        rms_x = norm_x * d_x ** (-1. / 2)
+        rms_x = norm_x * d_x ** (-1.0 / 2)
         x_normed = x / (rms_x + self.eps)
 
         if self.bias:

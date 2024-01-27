@@ -15,7 +15,6 @@ rng = jax.random.PRNGKey(0)
 torch.manual_seed(1337)
 
 
-
 # Compare pytorch linear network to custom implementation
 @pytest.mark.parametrize("n_in, n_out", [(1, 1), (4, 1), (1, 4), (4, 4)])
 def test_dense(n_in: int, n_out: int):
@@ -93,7 +92,6 @@ def test_dense_square():
 
     logger.debug(f"Diff: {np.linalg.norm(y_torch - y_jax):.2e}")
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
-
 
 
 @pytest.mark.parametrize("B, N", [(1, 2), (2, 1), (2, 3)])
@@ -196,7 +194,6 @@ def test_rmsnorm(embed_dim):
     jax_rmsnorm = RMSNorm(embed_dim, eps=eps)
     state = jax_rmsnorm.init_state(rng)
     y_jax = jax_rmsnorm(state, jnp.array(x))
-    
+
     logger.debug(f"y_torch.shape = {y_torch.shape}, y_jax.shape = {y_jax.shape}")
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
-    

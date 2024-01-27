@@ -6,6 +6,7 @@ from act import *
 from testing_utils import *
 from log_utils import logger
 
+
 @pytest.mark.parametrize("p", [0.1, 0.5, 0.0, 0.8])
 def test_dropout_train(p: float):
     x = torch.ones(4, 2, 3, requires_grad=False)
@@ -39,6 +40,7 @@ def test_dropout_eval(p: float):
     y_jax, rng = dropout(jnp.array(x), p, rng, training=False)
 
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
+
 
 @pytest.mark.parametrize("shape", [(4, 4), (4, 4, 4)])
 def test_softmax(shape: Tuple[int, ...]):
