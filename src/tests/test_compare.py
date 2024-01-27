@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import torch
 import pytest
 from typing import Tuple
-from testing_utils import TorchPositionalEncoding, TOL
+from testing_utils import *
 
 from log_utils import logger
 from attention import *
@@ -180,3 +180,23 @@ def test_positional_encoding(size):
     y_jax, _rng = jax_posenc(jnp.array(x), rng)
 
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
+
+
+@pytest.mark.parametrize("embed_dim", [1, 8])
+def test_rmsnorm(embed_dim):
+    x = torch.randn(4, 2, embed_dim, requires_grad=False)
+    eps = 1e-5
+
+    # Torch
+    torch_rmsnorm = TRMSNorm(embed_dim, eps=eps)
+    with torch.no_grad():
+        y_torch = torch_rmsnorm(x).numpy()
+
+    # Jax
+    jax_rmsnorm = RMSNorm(embed_dim, eps=eps)
+    state = jax_rmsnorm.init_state(rng)
+    y_jax = jax_rmsnorm(state, jnp.array(x))
+    
+    logger.debug(f"y_torch.shape = {y_torch.shape}, y_jax.shape = {y_jax.shape}")
+    assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
+    

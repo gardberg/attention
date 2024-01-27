@@ -91,6 +91,25 @@ class LayerNorm:
         return self.forward(state, x)
 
 
+class RMSNorm:
+    
+    def __init__(self, norm_dims: int, eps=1e-5):
+        self.norm_dim = norm_dims # size of last dim to normalize over
+        self.eps = eps
+        
+    def init_state(self, rng: jax.Array = None):
+        return RMSNormState(
+            gamma=jnp.ones(self.norm_dim),
+        )
+
+    def forward(self, state: RMSNormState, x: jax.Array) -> jax.Array:
+        rms = jnp.sqrt(jnp.mean(x**2, axis=-1, keepdims=True))
+        return x / (rms + self.eps) * state.gamma
+
+    def __call__(self, state: RMSNormState, x: jax.Array) -> jax.Array:
+        return self.forward(state, x)
+        
+
 class Linear:
     def __init__(self, n_in: int, n_out: int, bias: bool = True, batch_dim: int = 0):
         self.n_in = n_in

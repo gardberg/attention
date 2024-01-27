@@ -58,7 +58,7 @@ If the same key is split in two different places, does it result in the same sub
 #### Improvements
 
 - [ ] Prenorm with RMSNorm
-- [ ] SwiGLU layer
+- [x] SwiGLU layer
 - [ ] Rotational Positional Encoding
 - [ ] Grouped Query Attention
 
@@ -80,7 +80,7 @@ Make sure local venv is activated, which contains poetry:
 
 `poetry install` - install dependencies specified in `pyproject.toml`
 
-Have added pytest config options to `pyproject.toml` so that they are set by default. E.g. `log_cli = true` and `log_cli_level = 25` to show custom logs.
+Have added pytest config options to `pyproject.toml` so that they are set by default. E.g. `log_cli = true` 
 
 - [ ] Is it worth creating a dev environment in poetry?
 

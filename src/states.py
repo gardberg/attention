@@ -16,6 +16,10 @@ class LayerNormState(NamedTuple):
     gamma: jax.Array
     beta: jax.Array
 
+    
+class RMSNormState(NamedTuple):
+    gamma: jax.Array
+
 
 class LinearState(NamedTuple):
     weights: jax.Array
