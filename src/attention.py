@@ -7,6 +7,7 @@ from act import *
 from states import *
 from typing import NamedTuple, TypeVar, Type
 import torch
+import torch.nn as nn
 
 
 def batchnorm_1d(
@@ -51,7 +52,7 @@ class LayerNorm:
         assert isinstance(
             norm_dims, (tuple, int)
         ), f"norm_dims must be tuple or int, got {type(norm_dims)}"
-        self.norm_dims = (norm_dims) if isinstance(norm_dims, int) else norm_dims
+        self.norm_dims = (norm_dims,) if isinstance(norm_dims, int) else norm_dims
         # tuple of dims to normalize over
         # Example: x.shape = (2, 3, 1), norm_dims = (3, 1)
         # => Normalize over last 2 dims
@@ -170,7 +171,7 @@ class FeedForward:
         self, state: FeedForwardState, x: jax.Array, rng: jax.Array
     ) -> jax.Array:
         x = self.act(self.layer1(state.linear1_state, x))
-        x = dropout(x, self.dropout, rng)
+        x, _rng = dropout(x, self.dropout, rng)
         return self.layer2(state.linear2_state, x)
 
 
@@ -379,8 +380,8 @@ class PositionalEncoding:
 NamedTupleSubclass = TypeVar("NamedTupleSubclass", bound=NamedTuple)
 
 
-def to_jax_state(torch_module: torch.nn.Module) -> Type[NamedTupleSubclass]:
-    if isinstance(torch_module, torch.nn.MultiheadAttention):
+def to_jax_state(torch_module: nn.Module) -> Type[NamedTupleSubclass]:
+    if isinstance(torch_module, nn.MultiheadAttention):
         emb_size = torch_module.embed_dim
         w_in, b_in = torch_module.in_proj_weight, torch_module.in_proj_bias
         w_out, b_out = torch_module.out_proj.weight, torch_module.out_proj.bias
@@ -399,7 +400,7 @@ def to_jax_state(torch_module: torch.nn.Module) -> Type[NamedTupleSubclass]:
             *(jax.tree_map(lambda x: jnp.array(x.detach()), linear_states))
         )
 
-    elif isinstance(torch_module, torch.nn.Linear):
+    elif isinstance(torch_module, nn.Linear):
         weight, bias = (
             jnp.array(torch_module.weight.detach()),
             jnp.array(torch_module.bias.detach())
@@ -408,10 +409,22 @@ def to_jax_state(torch_module: torch.nn.Module) -> Type[NamedTupleSubclass]:
         )
         return LinearState(weight, bias)
 
-    elif isinstance(torch_module, torch.nn.LayerNorm):
+    elif isinstance(torch_module, nn.LayerNorm):
         return LayerNormState(
             jnp.array(torch_module.weight.detach()),
             jnp.array(torch_module.bias.detach()),
+        )
+
+    elif isinstance(torch_module, nn.TransformerEncoderLayer):
+        return EncoderLayerState(
+            layer_norm1_state=to_jax_state(torch_module.norm1),
+            self_attn_state=to_jax_state(torch_module.self_attn),
+            layer_norm2_state=to_jax_state(torch_module.norm2),
+            feed_forward_state=FeedForwardState(
+                to_jax_state(torch_module.linear1),
+                to_jax_state(torch_module.linear2),
+            ),
+            training=torch_module.training,
         )
 
     else:

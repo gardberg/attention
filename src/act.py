@@ -62,6 +62,9 @@ def swiglu(x: jax.Array, dim=-1) -> jax.Array:
 def dropout(
     x: jax.Array, prob: float, rng: jax.Array, training: bool = True
 ) -> Tuple[jax.Array, jax.Array]:
+
+    prob = float(prob)
+
     # p: probability of dropout
     assert 0 <= prob < 1, f"Probability must be in [0, 1), got {prob}"
     if not training:

@@ -5,6 +5,10 @@ from act import relu
 
 
 class EncoderLayer:
+    """
+    Norm-first Transformer encoder layer
+    """
+
     def __init__(
         self, emb_size: int, n_heads: int, d_ff: int = 2048, dropout: float = 0
     ):
@@ -22,11 +26,13 @@ class EncoderLayer:
         """
         z = self.layer_norm1(state.layer_norm1_state, x)
         attn = self.self_attn(state.self_attn_state, z, z, z, mask)
-        x = x + dropout(attn, self.dropout, rng)
+        x_drop, rng = dropout(attn, self.dropout, rng)
+        x = x + x_drop
 
         z = self.layer_norm2(state.layer_norm2_state, x)
-        ff = self.feed_forward(state.feed_forward_state, z)
-        x = x + dropout(ff, self.dropout, rng)
+        ff = self.feed_forward(state.feed_forward_state, z, rng)
+        x_drop, _rng = dropout(ff, self.dropout, rng)
+        x = x + x_drop
         return x
 
     def init_state(self, rng: jax.Array) -> EncoderLayerState:
