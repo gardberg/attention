@@ -28,6 +28,8 @@ Filter for a specific test to run with `pytest -k test_name`
 
 Enable debug logs with `LOG_LEVEL=DEBUG pytest`
 
+Run formatting with `black .`
+
 ### TODO
 
 - [ ] Ensure split is used on all rng keys in functions

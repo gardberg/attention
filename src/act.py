@@ -1,6 +1,7 @@
 import jax.numpy as jnp
 import jax
-from typing import Tuple
+from typing import Tuple, Union
+from states import SnakeState
 
 
 # Naive
@@ -62,7 +63,6 @@ def swiglu(x: jax.Array, dim=-1) -> jax.Array:
 def dropout(
     x: jax.Array, prob: float, rng: jax.Array, training: bool = True
 ) -> Tuple[jax.Array, jax.Array]:
-
     prob = float(prob)
 
     # p: probability of dropout
@@ -74,3 +74,20 @@ def dropout(
 
     # Need to return new rng state?
     return x * mask / (1 - prob), rng
+
+
+class Snake:
+    def __init__(self, n_in: int, trainable: bool = False):
+        self.n_in = n_in
+        self.trainable = trainable
+
+    def init_state(self, rng: jax.Array) -> SnakeState:
+        # TODO: Proper initialization
+        a = 0.1 * jax.random.exponential(rng, (self.n_in,))
+        return SnakeState(a)
+
+    def __call__(self, state: jax.Array, x: jax.Array) -> Tuple[jax.Array, jax.Array]:
+        return self._forward(x, state.a)
+
+    def _forward(self, x: jax.Array, a: jax.Array) -> jax.Array:
+        return x + (1.0 / a) * jnp.power(jnp.sin(a * x), 2)

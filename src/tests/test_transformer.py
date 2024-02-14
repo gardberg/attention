@@ -10,6 +10,7 @@ from transformer import *
 
 CONTEXT_LEN = 3
 
+
 def test_transformer_encoder_layer():
     emb_size = 4
     n_heads = 1
@@ -23,17 +24,13 @@ def test_transformer_encoder_layer():
 
     # Torch
     torch_encoder_layer = TransformerEncoderLayer(
-        emb_size,
-        n_heads,
-        dim_feedforward=d_ff,
-        dropout=dropout,
-        norm_first=True
+        emb_size, n_heads, dim_feedforward=d_ff, dropout=dropout, norm_first=True
     )
 
     with torch.no_grad():
         y_torch = torch_encoder_layer(x).detach().numpy()
 
-    # Jax 
+    # Jax
     encoder_layer = EncoderLayer(emb_size, n_heads, d_ff, dropout)
     # encoder_state = encoder_layer.init_state(jax.random.PRNGKey(0))
     encoder_state = to_jax_state(torch_encoder_layer)

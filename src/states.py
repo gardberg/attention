@@ -21,6 +21,10 @@ class RMSNormState(NamedTuple):
     gamma: jax.Array
 
 
+class SnakeState(NamedTuple):
+    a: jax.Array
+
+
 class LinearState(NamedTuple):
     weights: jax.Array
     bias: jax.Array

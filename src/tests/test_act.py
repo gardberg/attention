@@ -96,3 +96,25 @@ def test_swiglu(shape: Tuple[int, ...], dim: int):
 
     logger.debug(f"Diff: {np.linalg.norm(y_torch - y):.2e}")
     assert np.allclose(y, y_torch, atol=TOL), f"y = {y}, y_torch = {y_torch}"
+
+
+@pytest.mark.parametrize("n_in, shape", [(1, 1), (2, 2), (4, 4)])
+def test_snake(n_in: int, shape: Tuple[int, ...]):
+    a = 2
+
+    x = torch.randn(shape)
+    torch_snake = TorchSnake(n_in, a, trainable=False)
+    with torch.no_grad():
+        y_torch = torch_snake(x).numpy()
+
+    # jax
+    jax_snake = Snake(n_in, trainable=False)
+    state = SnakeState(jnp.array(a))
+    y_jax = jax_snake(state, jnp.array(x))
+
+    assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
+
+
+def test_snake_trainable():
+    # TODO
+    pass
