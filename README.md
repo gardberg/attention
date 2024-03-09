@@ -59,14 +59,20 @@ If the same key is split in two different places, does it result in the same sub
 
 #### Improvements
 
-- [ ] Prenorm with RMSNorm
+- [x] RMSNorm
 - [x] SwiGLU layer
+- [x] GeGLU
 - [ ] Rotational Positional Encoding
+- [ ] Multi-Query Attention (https://arxiv.org/abs/1911.02150)
 - [ ] Grouped Query Attention
 
 - [ ] Vectorize stuff with vmap
 - [ ] Windowed attention with recomputation
 - [ ] Streaming LLM attention
+
+#### Extra fun stuff!
+
+- [x] Snake activation
 
 #### Using Poetry
 
@@ -83,8 +89,6 @@ Make sure local venv is activated, which contains poetry:
 `poetry install` - install dependencies specified in `pyproject.toml`
 
 Have added pytest config options to `pyproject.toml` so that they are set by default. E.g. `log_cli = true` 
-
-- [ ] Is it worth creating a dev environment in poetry?
 
 ### Links
 

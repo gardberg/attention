@@ -9,6 +9,8 @@ from testing_utils import *
 from log_utils import logger
 from attention import *
 from act import *
+from states import to_jax_state
+
 
 np.random.seed(1337)
 rng = jax.random.PRNGKey(0)
@@ -175,7 +177,7 @@ def test_positional_encoding(size):
 
     # Jax
     jax_posenc = PositionalEncoding(embed_dim, dropout=0.0)
-    y_jax, _rng = jax_posenc(jnp.array(x), rng)
+    y_jax = jax_posenc(jnp.array(x), rng)
 
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
 

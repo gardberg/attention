@@ -5,6 +5,7 @@ import numpy as np
 from act import *
 from testing_utils import *
 from log_utils import logger
+from loss import MSELoss
 
 
 @pytest.mark.parametrize("p", [0.1, 0.5, 0.0, 0.8])
@@ -17,7 +18,7 @@ def test_dropout_train(p: float):
 
     # Jax
     rng = jax.random.PRNGKey(0)
-    y_jax, rng = dropout(jnp.array(x), p, rng, training=True)
+    y_jax = dropout(jnp.array(x), p, rng, training=True)
 
     assert y_torch.shape == y_jax.shape, f"Got {y_jax.shape}, expected {y_torch.shape}"
     # assert y_jax is not all ones
@@ -37,7 +38,7 @@ def test_dropout_eval(p: float):
 
     # Jax
     rng = jax.random.PRNGKey(0)
-    y_jax, rng = dropout(jnp.array(x), p, rng, training=False)
+    y_jax = dropout(jnp.array(x), p, rng, training=False)
 
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
 
@@ -108,13 +109,39 @@ def test_snake(n_in: int, shape: Tuple[int, ...]):
         y_torch = torch_snake(x).numpy()
 
     # jax
-    jax_snake = Snake(n_in, trainable=False)
+    jax_snake = Snake(n_in, training=False)
     state = SnakeState(jnp.array(a))
     y_jax = jax_snake(state, jnp.array(x))
 
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
 
 
-def test_snake_trainable():
-    # TODO
-    pass
+@pytest.mark.parametrize("n_in, shape", [(1, 1), (2, 2), (4, 4)])
+def test_snake_trainable(n_in: int, shape: Tuple[int, ...]):
+    x = torch.randn(shape)
+    y = torch.randn(shape)
+
+    torch_snake = TorchSnake(n_in, trainable=True)
+
+    a_jax = jnp.array(torch_snake.a.detach().numpy())
+
+    y_torch = torch_snake(x)
+    torch_mse_loss = torch.nn.MSELoss()
+    torch_loss = torch_mse_loss(y_torch, y)
+
+    torch_loss.backward()
+    grads_pytorch = torch_snake.a.grad.numpy()
+
+    # Jax
+    jax_snake = Snake(n_in, training=True)
+    state = SnakeState(a_jax)
+    mse_loss = MSELoss()
+    
+    def loss(state, x, y):
+        y_pred = jax_snake(state, x)
+        return mse_loss(y_pred, y)
+
+    grads = jax.grad(loss, argnums=0)(state, jnp.array(x), jnp.array(y))
+
+    logger.debug(f"grad_jax: {grads[0]}, grad_pytorch: {grads_pytorch}")
+    assert np.allclose(grads[0], grads_pytorch, atol=TOL), f"grads = {grads[0]}, grads_pytorch = {grads_pytorch}"

@@ -1,20 +1,17 @@
 import jax.numpy as jnp
 import jax
-from jax import random, vmap
-from typing import Callable, Tuple, NamedTuple, Union
+from jax import random, vmap, Array
+from typing import Callable, Tuple, Union
 from log_utils import logger
 from act import *
 from states import *
-from typing import NamedTuple, TypeVar, Type
-import torch
-import torch.nn as nn
 
 
 def batchnorm_1d(
-    x: jax.Array, state: BatchNormState, training: bool = True, eps=1e-5
-) -> Tuple[jax.Array, BatchNormState]:
+    x: Array, state: BatchNormState, training: bool = True, eps=1e-5
+) -> Tuple[Array, BatchNormState]:
     """
-    :param jax.Array x: (B, N) or (B, N, L), B batch size, N input dim, L input length
+    :param Array x: (B, N) or (B, N, L), B batch size, N input dim, L input length
     :param BatchNormState state: NamedTuple with mean, var, gamma, beta
     """
     # https://pytorch.org/docs/stable/generated/torch.nn.BatchNorm1d.html#torch.nn.BatchNorm1d
@@ -66,14 +63,14 @@ class LayerNorm:
 
         self.eps = eps
 
-    def init_state(self, rng: jax.Array = None):
+    def init_state(self, rng: Array = None):
         return LayerNormState(
             gamma=jnp.ones(self.norm_dims),
             beta=jnp.zeros(self.norm_dims),
         )
 
     # Do we need to pass the state as output?
-    def forward(self, state: LayerNormState, x: jax.Array) -> jax.Array:
+    def forward(self, state: LayerNormState, x: Array) -> Array:
         assert (
             x.shape[-len(self.norm_dims) :] == self.norm_dims
         ), f"Input shape {x.shape} must have last dimension matching norm_dims: {self.norm_dims}"
@@ -87,7 +84,7 @@ class LayerNorm:
         x_norm = (x - means) / jnp.sqrt(vars + self.eps)
         return state.gamma * x_norm + state.beta
 
-    def __call__(self, state: LayerNormState, x: jax.Array) -> jax.Array:
+    def __call__(self, state: LayerNormState, x: Array) -> Array:
         # TODO: Vectorize with vmap
         return self.forward(state, x)
 
@@ -97,16 +94,16 @@ class RMSNorm:
         self.norm_dim = norm_dims  # size of last dim to normalize over
         self.eps = eps
 
-    def init_state(self, rng: jax.Array = None):
+    def init_state(self, rng: Array = None):
         return RMSNormState(
             gamma=jnp.ones(self.norm_dim),
         )
 
-    def forward(self, state: RMSNormState, x: jax.Array) -> jax.Array:
+    def forward(self, state: RMSNormState, x: Array) -> Array:
         rms = jnp.sqrt(jnp.mean(x**2, axis=-1, keepdims=True))
         return x / (rms + self.eps) * state.gamma
 
-    def __call__(self, state: RMSNormState, x: jax.Array) -> jax.Array:
+    def __call__(self, state: RMSNormState, x: Array) -> Array:
         return self.forward(state, x)
 
 
@@ -117,7 +114,7 @@ class Linear:
         self.bias = bias
         self.batch_dim = batch_dim
 
-    def init_state(self, rng: jax.Array) -> LinearState:
+    def init_state(self, rng: Array) -> LinearState:
         # Do we need to return a key here to ensure that the original one is not used again?
         w_key, b_key = random.split(rng)
         init_range = 1 / jnp.sqrt(self.n_in)
@@ -131,7 +128,7 @@ class Linear:
         )
         return LinearState(w, b)
 
-    def __call__(self, state: LinearState, x: jax.Array) -> jax.Array:
+    def __call__(self, state: LinearState, x: Array) -> Array:
         """
         Batched forward pass along batch_dim
         """
@@ -140,7 +137,7 @@ class Linear:
         else:
             return self._forward(state, x)
 
-    def _forward(self, state: LinearState, x: jax.Array) -> jax.Array:
+    def _forward(self, state: LinearState, x: Array) -> Array:
         """
         Non-batched forward pass
 
@@ -160,7 +157,7 @@ class FeedForward:
         self.act = act
         self.dropout = dropout
 
-    def init_state(self, rng: jax.Array) -> FeedForwardState:
+    def init_state(self, rng: Array) -> FeedForwardState:
         rng1, rng2 = random.split(rng)
         return FeedForwardState(
             self.layer1.init_state(rng1),
@@ -168,10 +165,10 @@ class FeedForward:
         )
 
     def __call__(
-        self, state: FeedForwardState, x: jax.Array, rng: jax.Array
-    ) -> jax.Array:
+        self, state: FeedForwardState, x: Array, rng: Array
+    ) -> Array:
         x = self.act(self.layer1(state.linear1_state, x))
-        x, _rng = dropout(x, self.dropout, rng)
+        x = dropout(x, self.dropout, rng)
         return self.layer2(state.linear2_state, x)
 
 
@@ -188,7 +185,7 @@ class PreAttention:
 
         self.dense = Linear(emb_size, n_heads * self.d_k, bias=bias)
 
-    def forward(self, state: LinearState, x: jax.Array) -> jax.Array:
+    def forward(self, state: LinearState, x: Array) -> Array:
         # x.shape: (context_len, batch_size, emb_size)
         # returns: q, k, or v of shape (context_len, batch_size, n_heads, d_k)
 
@@ -199,10 +196,10 @@ class PreAttention:
         x = x.reshape((*head_shape, self.n_heads, self.d_k))
         return x
 
-    def init_state(self, rng: jax.Array) -> LinearState:
+    def init_state(self, rng: Array) -> LinearState:
         return self.dense.init_state(rng)
 
-    def __call__(self, weight_matrix: jax.Array, x: jax.Array) -> jax.Array:
+    def __call__(self, weight_matrix: Array, x: Array) -> Array:
         # Batch batch_dim of x.shape: (seq_len, batch_size, emd_size)
         if x.ndim > 3:
             raise ValueError(f"Input dim must be 2 or 3, got {x.ndim}")
@@ -242,7 +239,7 @@ class MultiHeadAttention:
 
         self.debug_states = dict()
 
-    def init_state(self, rng: jax.Array) -> MultiHeadAttentionState:
+    def init_state(self, rng: Array) -> MultiHeadAttentionState:
         rngs = random.split(rng, 4)
         return MultiHeadAttentionState(
             self.query_fn.init_state(rngs[0]),
@@ -251,7 +248,7 @@ class MultiHeadAttention:
             self.out.init_state(rngs[3]),
         )
 
-    def get_causal_mask(self, context_len: int, batch_size: int) -> jax.Array:
+    def get_causal_mask(self, context_len: int, batch_size: int) -> Array:
         # creates a causal mask of shape (context_len, context_len, batch_size, n_heads)
         # mask[i, j, ...] = true -> i can not attend to j
         base_mask = jnp.tril(jnp.ones((context_len, context_len), dtype=bool), k=0)
@@ -263,11 +260,11 @@ class MultiHeadAttention:
     def forward(
         self,
         state: MultiHeadAttentionState,
-        q: jax.Array,
-        k: jax.Array,
-        v: jax.Array,
-        mask: jax.Array = None,
-    ) -> jax.Array:
+        q: Array,
+        k: Array,
+        v: Array,
+        mask: Array = None,
+    ) -> Array:
         # q, k, v shape: (context_len, batch_size, emb_size)
 
         self.debug_states["input_query"] = q
@@ -336,11 +333,11 @@ class MultiHeadAttention:
     def __call__(
         self,
         state: MultiHeadAttentionState,
-        q: jax.Array,
-        k: jax.Array,
-        v: jax.Array,
-        mask: jax.Array = None,
-    ) -> jax.Array:
+        q: Array,
+        k: Array,
+        v: Array,
+        mask: Array = None,
+    ) -> Array:
         return self.forward(state, q, k, v, mask)
 
 
@@ -367,67 +364,9 @@ class PositionalEncoding:
         return pe
 
     def __call__(
-        self, x: jax.Array, rng: jax.Array, training: bool = True
-    ) -> Tuple[jax.Array, jax.Array]:
+        self, x: Array, rng: Array, training: bool = True
+    ) -> Array:
         # x.shape: (context_len, batch_size, embed_dim)
         assert len(x.shape) == 3
         x = x + self.embeds[: x.shape[0]]
         return dropout(x, self.dropout, rng, training)
-
-
-# TODO: Move into separate file
-# Requires torch import, which is a bit heavy
-NamedTupleSubclass = TypeVar("NamedTupleSubclass", bound=NamedTuple)
-
-
-def to_jax_state(torch_module: nn.Module) -> Type[NamedTupleSubclass]:
-    if isinstance(torch_module, nn.MultiheadAttention):
-        emb_size = torch_module.embed_dim
-        w_in, b_in = torch_module.in_proj_weight, torch_module.in_proj_bias
-        w_out, b_out = torch_module.out_proj.weight, torch_module.out_proj.bias
-
-        # Unstack stacked q, k, and v weights
-        linear_states = [
-            LinearState(
-                w_in[i * emb_size : (i + 1) * emb_size],
-                b_in[i * emb_size : (i + 1) * emb_size] if b_in is not None else None,
-            )
-            for i in range(3)
-        ]
-        linear_states.append(LinearState(w_out, b_out if b_out is not None else None))
-
-        return MultiHeadAttentionState(
-            *(jax.tree_map(lambda x: jnp.array(x.detach()), linear_states))
-        )
-
-    elif isinstance(torch_module, nn.Linear):
-        weight, bias = (
-            jnp.array(torch_module.weight.detach()),
-            jnp.array(torch_module.bias.detach())
-            if torch_module.bias is not None
-            else None,
-        )
-        return LinearState(weight, bias)
-
-    elif isinstance(torch_module, nn.LayerNorm):
-        return LayerNormState(
-            jnp.array(torch_module.weight.detach()),
-            jnp.array(torch_module.bias.detach()),
-        )
-
-    elif isinstance(torch_module, nn.TransformerEncoderLayer):
-        return EncoderLayerState(
-            layer_norm1_state=to_jax_state(torch_module.norm1),
-            self_attn_state=to_jax_state(torch_module.self_attn),
-            layer_norm2_state=to_jax_state(torch_module.norm2),
-            feed_forward_state=FeedForwardState(
-                to_jax_state(torch_module.linear1),
-                to_jax_state(torch_module.linear2),
-            ),
-            training=torch_module.training,
-        )
-
-    else:
-        raise NotImplementedError(
-            f"to_jax_state not implemented for {type(torch_module)}"
-        )

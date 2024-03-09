@@ -7,6 +7,7 @@ from log_utils import logger
 import pytest
 from typing import Tuple
 from testing_utils import TOL
+from states import to_jax_state
 
 np.random.seed(1337)
 rng = jax.random.PRNGKey(0)

@@ -1,12 +1,12 @@
 import jax
 import jax.numpy as jnp
-import pytest
 from torch.nn import TransformerEncoderLayer
 import torch
 import numpy as np
 from testing_utils import *
 
 from transformer import *
+from states import to_jax_state
 
 CONTEXT_LEN = 3
 

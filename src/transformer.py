@@ -2,6 +2,7 @@ import jax.numpy as jnp
 import jax
 from attention import *
 from act import relu
+from jax import Array
 
 
 class EncoderLayer:
@@ -19,23 +20,25 @@ class EncoderLayer:
         self.dropout = dropout
 
     def __call__(
-        self, state: EncoderLayerState, x: jax.Array, mask: jax.Array, rng: jax.Array
-    ) -> jax.Array:
+        self, state: EncoderLayerState, x: Array, mask: Array, rng: Array
+    ) -> Array:
         """
         x: (context_len, batch_size, emb_size)
         """
+        rng1, rng2, rng3 = jax.random.split(rng, 3)
+
         z = self.layer_norm1(state.layer_norm1_state, x)
         attn = self.self_attn(state.self_attn_state, z, z, z, mask)
-        x_drop, rng = dropout(attn, self.dropout, rng)
+        x_drop = dropout(attn, self.dropout, rng1)
         x = x + x_drop
 
         z = self.layer_norm2(state.layer_norm2_state, x)
-        ff = self.feed_forward(state.feed_forward_state, z, rng)
-        x_drop, _rng = dropout(ff, self.dropout, rng)
+        ff = self.feed_forward(state.feed_forward_state, z, rng2)
+        x_drop = dropout(ff, self.dropout, rng3)
         x = x + x_drop
         return x
 
-    def init_state(self, rng: jax.Array) -> EncoderLayerState:
+    def init_state(self, rng: Array) -> EncoderLayerState:
         rngs = jax.random.split(rng, 4)
         return EncoderLayerState(
             layer_norm1_state=self.layer_norm1.init_state(rngs[0]),

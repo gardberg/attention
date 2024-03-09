@@ -1,6 +1,7 @@
 import jax.numpy as jnp
 import jax
 from typing import Callable
+from jax import Array
 
 
 class Loss:
@@ -25,7 +26,7 @@ class MSELoss(Loss):
     def __init__(self, reduction: str = "mean"):
         super().__init__(reduction)
 
-    def __call__(self, input: jax.Array, target: jax.Array):
+    def __call__(self, input: Array, target: Array):
         return self.reduction_fn(jnp.square(input - target))
 
 
@@ -33,7 +34,7 @@ class BCELoss(Loss):
     def __init__(self, reduction: str = "mean"):
         super().__init__(reduction)
 
-    def __call__(self, input: jax.Array, target: jax.Array):
+    def __call__(self, input: Array, target: Array):
         return self.reduction_fn(
             -(target * jnp.log(input) + (1 - target) * jnp.log(1 - input))
         )

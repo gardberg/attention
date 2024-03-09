@@ -1,5 +1,6 @@
 import os
 import jax
+from jax import Array
 from typing import Union
 from attention import NamedTupleSubclass
 
@@ -16,22 +17,22 @@ class Tokenizer:
         except:
             raise Exception(f"Could not download or find tiktoken tokenizer: '{name}'")
 
-    def encode(self, text: str) -> jax.Array:
+    def encode(self, text: str) -> Array:
         enc_list = self.encoding.encode(text)
         return jax.numpy.array(enc_list)
 
     # TODO: How do we handle batched array?
-    def decode(self, enc: jax.Array) -> str:
+    def decode(self, enc: Array) -> str:
         return self.encoding.decode(enc.tolist())
 
 
-def state_to_str(state: Union[NamedTupleSubclass, jax.Array, bool], indent=0):
-    # state is a NamedTuple which contains several other NamedTuples, jax.Arrays, or bools
+def state_to_str(state: Union[NamedTupleSubclass, Array, bool], indent=0):
+    # state is a NamedTuple which contains several other NamedTuples, Arrays, or bools
 
     if state is None:
         return "None"
 
-    if isinstance(state, jax.Array):
+    if isinstance(state, Array):
         return f"{state.shape}"
 
     if isinstance(state, bool):
