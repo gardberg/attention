@@ -198,3 +198,17 @@ def test_rmsnorm(embed_dim):
 
     logger.debug(f"y_torch.shape = {y_torch.shape}, y_jax.shape = {y_jax.shape}")
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
+
+
+@pytest.mark.parametrize("shape", [(2, 2, 1, 4)])
+def test_rope(shape: tuple):
+    # TODO: Put expected in parametrize
+
+    x = jnp.ones(shape)
+    expected = jnp.array([[[[1.0, 1.0, 1.0, 1.0]],
+                    [[1.0, 1.0, 1.0, 1.0]]],
+                   [[[-0.30116868, 0.9899502, 1.3817732, 1.0099498]],
+                    [[-0.30116868, 0.9899502, 1.3817732, 1.0099498]]]])
+    res = apply_rope(x)
+
+    assert np.allclose(res, expected, atol=TOL), f"res = {res}, expected = {expected}"

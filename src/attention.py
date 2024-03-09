@@ -370,3 +370,39 @@ class PositionalEncoding:
         assert len(x.shape) == 3
         x = x + self.embeds[: x.shape[0]]
         return dropout(x, self.dropout, rng, training)
+
+
+# https://arxiv.org/abs/2104.09864
+# Adapted from https://github.com/google-deepmind/gemma
+def apply_rope(x: Array) -> Array:
+    """
+    Applies 
+    x.shape: (seq_len, batch_size, n_heads, d)
+    output.shape: (seq_len, batch_size, n_heads, d)
+    """
+
+    assert x.ndim == 4, f"Input dim must be 4, got {x.ndim}"
+
+    seq_len = x.shape[0]
+    d = x.shape[-1]
+    batch_size = x.shape[1]
+
+    # assume vectors come in sequential order
+    positions = jnp.stack([jnp.arange(seq_len)] * batch_size, axis=-1)
+
+    exponent = 2 * jnp.arange(0, d // 2) / d
+    timescale = 10_000 ** exponent
+
+    sinusoid_input = positions[..., jnp.newaxis] / timescale[jnp.newaxis, jnp.newaxis, :]
+    sinusoid_input = sinusoid_input[..., jnp.newaxis, :]
+
+    sin = jnp.sin(sinusoid_input)
+    cos = jnp.cos(sinusoid_input)
+
+    first_half, second_half = jnp.split(x, 2, axis=-1)
+    first_part = first_half * cos - second_half * sin
+    second_part = second_half * cos + first_half * sin
+    out = jnp.concatenate([first_part, second_part], axis=-1)
+
+    return out.astype(x.dtype)
+    
