@@ -1,7 +1,7 @@
 import jax.numpy as jnp
 import jax
 from jax import random, vmap, Array
-from typing import Callable, Tuple, Union
+from typing import Callable, Union
 from log_utils import logger
 from act import *
 from states import *
@@ -9,7 +9,7 @@ from states import *
 
 def batchnorm_1d(
     x: Array, state: BatchNormState, training: bool = True, eps=1e-5
-) -> Tuple[Array, BatchNormState]:
+) -> tuple[Array, BatchNormState]:
     """
     :param Array x: (B, N) or (B, N, L), B batch size, N input dim, L input length
     :param BatchNormState state: NamedTuple with mean, var, gamma, beta
@@ -45,7 +45,7 @@ def batchnorm_1d(
 
 # (context_len, batch_size, emb_dim)
 class LayerNorm:
-    def __init__(self, norm_dims: Union[Tuple[int, ...], int], eps=1e-5):
+    def __init__(self, norm_dims: Union[tuple[int, ...], int], eps=1e-5):
         assert isinstance(
             norm_dims, (tuple, int)
         ), f"norm_dims must be tuple or int, got {type(norm_dims)}"

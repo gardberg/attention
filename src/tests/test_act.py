@@ -44,7 +44,7 @@ def test_dropout_eval(p: float):
 
 
 @pytest.mark.parametrize("shape", [(4, 4), (4, 4, 4)])
-def test_softmax(shape: Tuple[int, ...]):
+def test_softmax(shape: tuple[int, ...]):
     x = torch.randn(shape)
     y_torch = torch.softmax(x, dim=1).numpy()
     y = jax.device_get(softmax(jnp.array(x), dim=1))
@@ -54,7 +54,7 @@ def test_softmax(shape: Tuple[int, ...]):
 
 
 @pytest.mark.parametrize("shape", [(4, 4), (4, 4, 4)])
-def test_softmax_stable(shape: Tuple[int, ...]):
+def test_softmax_stable(shape: tuple[int, ...]):
     x = torch.randn(shape)
     y_torch = torch.softmax(x, dim=1).numpy()
     y = jax.device_get(softmax_stable(jnp.array(x), dim=1))
@@ -64,7 +64,7 @@ def test_softmax_stable(shape: Tuple[int, ...]):
 
 
 @pytest.mark.parametrize("shape", [(1,), (4,), (1, 1), (4, 4)])
-def test_relu(shape: Tuple[int, ...]):
+def test_relu(shape: tuple[int, ...]):
     x = torch.randn(*shape)
     y_torch = torch.relu(x).numpy()
     y = relu(jnp.array(x))
@@ -74,7 +74,7 @@ def test_relu(shape: Tuple[int, ...]):
 
 
 @pytest.mark.parametrize("shape, dim", [((4, 4), -1), ((4, 4, 4), -2)])
-def test_glu(shape: Tuple[int, ...], dim: int):
+def test_glu(shape: tuple[int, ...], dim: int):
     x = torch.randn(shape)
     y_torch = torch.nn.functional.glu(x, dim=dim).numpy()
     logger.debug(f"y_torch.shape = {y_torch.shape}")
@@ -87,7 +87,7 @@ def test_glu(shape: Tuple[int, ...], dim: int):
 
 
 @pytest.mark.parametrize("shape, dim", [((4, 4), -1), ((4, 4, 4), -2)])
-def test_swiglu(shape: Tuple[int, ...], dim: int):
+def test_swiglu(shape: tuple[int, ...], dim: int):
     x = torch.randn(shape)
     y_torch = SwiGLU()(x, dim=dim).numpy()
     logger.debug(f"y_torch.shape = {y_torch.shape}")
@@ -100,7 +100,7 @@ def test_swiglu(shape: Tuple[int, ...], dim: int):
 
 
 @pytest.mark.parametrize("n_in, shape", [(1, 1), (2, 2), (4, 4)])
-def test_snake(n_in: int, shape: Tuple[int, ...]):
+def test_snake(n_in: int, shape: tuple[int, ...]):
     a = 2
 
     x = torch.randn(shape)
@@ -117,7 +117,7 @@ def test_snake(n_in: int, shape: Tuple[int, ...]):
 
 
 @pytest.mark.parametrize("n_in, shape", [(1, 1), (2, 2), (4, 4)])
-def test_snake_trainable(n_in: int, shape: Tuple[int, ...]):
+def test_snake_trainable(n_in: int, shape: tuple[int, ...]):
     x = torch.randn(shape)
     y = torch.randn(shape)
 

@@ -5,7 +5,6 @@ import torch
 from attention import *
 from log_utils import logger
 import pytest
-from typing import Tuple
 from loss import MSELoss
 from testing_utils import TOL
 

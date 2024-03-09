@@ -3,7 +3,6 @@ import jax
 import jax.numpy as jnp
 import torch
 import pytest
-from typing import Tuple
 from testing_utils import *
 
 from log_utils import logger

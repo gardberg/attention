@@ -1,6 +1,5 @@
 import jax.numpy as jnp
 import jax
-from typing import Tuple, Union
 from states import SnakeState
 from jax import Array
 

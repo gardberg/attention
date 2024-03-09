@@ -5,7 +5,6 @@ import torch
 from attention import *
 from log_utils import logger
 import pytest
-from typing import Tuple
 from testing_utils import TOL
 from states import to_jax_state
 
