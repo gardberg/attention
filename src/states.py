@@ -6,6 +6,7 @@ import jax.numpy as jnp
 import torch
 from torch import nn
 
+
 class BatchNormState(NamedTuple):
     # TODO: make into nested dict?
     mean: Array = 0
@@ -51,7 +52,15 @@ class EncoderLayerState(NamedTuple):
     self_attn_state: MultiHeadAttentionState
     layer_norm2_state: LayerNormState
     feed_forward_state: FeedForwardState
-    training: bool
+
+
+class DecoderLayerState(NamedTuple):
+    norm_attn: LayerNormState
+    self_attn: MultiHeadAttentionState
+    norm_src_attn: LayerNormState
+    src_attn: MultiHeadAttentionState
+    norm_ff: LayerNormState
+    feed_forward: FeedForwardState
 
 
 # TODO: Move into separate file
@@ -103,7 +112,6 @@ def to_jax_state(torch_module: nn.Module) -> Type[NamedTupleSubclass]:
                 to_jax_state(torch_module.linear1),
                 to_jax_state(torch_module.linear2),
             ),
-            training=torch_module.training,
         )
 
     else:

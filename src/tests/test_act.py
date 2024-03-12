@@ -136,7 +136,7 @@ def test_snake_trainable(n_in: int, shape: tuple[int, ...]):
     jax_snake = Snake(n_in, training=True)
     state = SnakeState(a_jax)
     mse_loss = MSELoss()
-    
+
     def loss(state, x, y):
         y_pred = jax_snake(state, x)
         return mse_loss(y_pred, y)
@@ -144,4 +144,6 @@ def test_snake_trainable(n_in: int, shape: tuple[int, ...]):
     grads = jax.grad(loss, argnums=0)(state, jnp.array(x), jnp.array(y))
 
     logger.debug(f"grad_jax: {grads[0]}, grad_pytorch: {grads_pytorch}")
-    assert np.allclose(grads[0], grads_pytorch, atol=TOL), f"grads = {grads[0]}, grads_pytorch = {grads_pytorch}"
+    assert np.allclose(
+        grads[0], grads_pytorch, atol=TOL
+    ), f"grads = {grads[0]}, grads_pytorch = {grads_pytorch}"

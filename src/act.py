@@ -60,9 +60,7 @@ def swiglu(x: Array, dim=-1) -> Array:
     return x1 * swish(x2)
 
 
-def dropout(
-    x: Array, prob: float, rng: Array, training: bool = True
-) -> Array:
+def dropout(x: Array, prob: float, rng: Array, training: bool = True) -> Array:
     prob = float(prob)
 
     # p: probability of dropout
@@ -79,7 +77,7 @@ def dropout(
 class Snake:
     def __init__(self, n_in: int, training: bool = False):
         self.n_in = n_in
-        self.training = training 
+        self.training = training
 
     def init_state(self, rng: Array) -> SnakeState:
         # TODO: Proper initialization

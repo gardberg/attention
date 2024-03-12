@@ -165,10 +165,10 @@ class FeedForward:
         )
 
     def __call__(
-        self, state: FeedForwardState, x: Array, rng: Array
+        self, state: FeedForwardState, x: Array, rng: Array, training=True
     ) -> Array:
         x = self.act(self.layer1(state.linear1_state, x))
-        x = dropout(x, self.dropout, rng)
+        x = dropout(x, self.dropout, rng, training)
         return self.layer2(state.linear2_state, x)
 
 
@@ -363,9 +363,7 @@ class PositionalEncoding:
         pe = pe.at[:, 0, 1::2].set(jnp.cos(position * div_term))
         return pe
 
-    def __call__(
-        self, x: Array, rng: Array, training: bool = True
-    ) -> Array:
+    def __call__(self, x: Array, rng: Array, training: bool = True) -> Array:
         # x.shape: (context_len, batch_size, embed_dim)
         assert len(x.shape) == 3
         x = x + self.embeds[: x.shape[0]]
@@ -376,7 +374,7 @@ class PositionalEncoding:
 # Adapted from https://github.com/google-deepmind/gemma
 def apply_rope(x: Array) -> Array:
     """
-    Applies 
+    Applies
     x.shape: (seq_len, batch_size, n_heads, d)
     output.shape: (seq_len, batch_size, n_heads, d)
     """
@@ -391,9 +389,11 @@ def apply_rope(x: Array) -> Array:
     positions = jnp.stack([jnp.arange(seq_len)] * batch_size, axis=-1)
 
     exponent = 2 * jnp.arange(0, d // 2) / d
-    timescale = 10_000 ** exponent
+    timescale = 10_000**exponent
 
-    sinusoid_input = positions[..., jnp.newaxis] / timescale[jnp.newaxis, jnp.newaxis, :]
+    sinusoid_input = (
+        positions[..., jnp.newaxis] / timescale[jnp.newaxis, jnp.newaxis, :]
+    )
     sinusoid_input = sinusoid_input[..., jnp.newaxis, :]
 
     sin = jnp.sin(sinusoid_input)
@@ -405,4 +405,3 @@ def apply_rope(x: Array) -> Array:
     out = jnp.concatenate([first_part, second_part], axis=-1)
 
     return out.astype(x.dtype)
-    

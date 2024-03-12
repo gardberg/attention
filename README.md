@@ -62,7 +62,7 @@ If the same key is split in two different places, does it result in the same sub
 - [x] RMSNorm
 - [x] SwiGLU layer
 - [x] GeGLU
-- [ ] Rotational Positional Encoding
+- [x] Rotational Positional Encoding
 - [ ] Multi-Query Attention (https://arxiv.org/abs/1911.02150)
 - [ ] Grouped Query Attention
 

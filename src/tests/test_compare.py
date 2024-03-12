@@ -205,10 +205,15 @@ def test_rope(shape: tuple):
     # TODO: Put expected in parametrize
 
     x = jnp.ones(shape)
-    expected = jnp.array([[[[1.0, 1.0, 1.0, 1.0]],
-                    [[1.0, 1.0, 1.0, 1.0]]],
-                   [[[-0.30116868, 0.9899502, 1.3817732, 1.0099498]],
-                    [[-0.30116868, 0.9899502, 1.3817732, 1.0099498]]]])
+    expected = jnp.array(
+        [
+            [[[1.0, 1.0, 1.0, 1.0]], [[1.0, 1.0, 1.0, 1.0]]],
+            [
+                [[-0.30116868, 0.9899502, 1.3817732, 1.0099498]],
+                [[-0.30116868, 0.9899502, 1.3817732, 1.0099498]],
+            ],
+        ]
+    )
     res = apply_rope(x)
 
     assert np.allclose(res, expected, atol=TOL), f"res = {res}, expected = {expected}"
