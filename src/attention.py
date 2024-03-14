@@ -167,9 +167,9 @@ class FeedForward:
     def __call__(
         self, state: FeedForwardState, x: Array, rng: Array, training=True
     ) -> Array:
-        x = self.act(self.layer1(state.linear1_state, x))
+        x = self.act(self.layer1(state.linear1, x))
         x = dropout(x, self.dropout, rng, training)
-        return self.layer2(state.linear2_state, x)
+        return self.layer2(state.linear2, x)
 
 
 class PreAttention:
@@ -271,9 +271,9 @@ class MultiHeadAttention:
 
         context_len, batch_size, emb_size = q.shape
 
-        query = self.query_fn(state.query_state, q)
-        key = self.key_fn(state.key_state, k)
-        value = self.value_fn(state.value_state, v)
+        query = self.query_fn(state.query, q)
+        key = self.key_fn(state.key, k)
+        value = self.value_fn(state.value, v)
 
         self.debug_states["query"] = query
         self.debug_states["key"] = key
@@ -323,7 +323,7 @@ class MultiHeadAttention:
         self.debug_states["concat_heads"] = attn
 
         # out = jnp.einsum("cbd,Dd->cbD", attn, state.output_state.weights)
-        out = self.out(state.output_state, attn)
+        out = self.out(state.output, attn)
 
         self.debug_states["out"] = out
 

@@ -36,13 +36,13 @@ class EncoderLayer:
         """
         rng1, rng2, rng3 = jax.random.split(rng, 3)
 
-        z = self.norm_attn(state.layer_norm1_state, x)
-        attn = self.self_attn(state.self_attn_state, z, z, z, mask)
+        z = self.norm_attn(state.layer_norm1, x)
+        attn = self.self_attn(state.self_attn, z, z, z, mask)
         x_drop = dropout(attn, self.dropout, rng1, training)
         x = x + x_drop
 
-        z = self.norm_ff(state.layer_norm2_state, x)
-        ff = self.feed_forward(state.feed_forward_state, z, rng2)
+        z = self.norm_ff(state.layer_norm2, x)
+        ff = self.feed_forward(state.feed_forward, z, rng2)
         x_drop = dropout(ff, self.dropout, rng3, training)
         x = x + x_drop
         return x
@@ -50,12 +50,12 @@ class EncoderLayer:
     def init_state(self, rng: Array) -> EncoderLayerState:
         rngs = jax.random.split(rng, 4)
         return EncoderLayerState(
-            layer_norm1_state=self.norm_attn.init_state(rngs[0]),
-            self_attn_state=self.self_attn.init_state(rngs[1]),
-            layer_norm2_state=self.norm_ff.init_state(rngs[2]),
-            feed_forward_state=self.feed_forward.init_state(rngs[3]),
-            training=True,
+            layer_norm1=self.norm_attn.init_state(rngs[0]),
+            self_attn=self.self_attn.init_state(rngs[1]),
+            layer_norm2=self.norm_ff.init_state(rngs[2]),
+            feed_forward=self.feed_forward.init_state(rngs[3]),
         )
+
 
 
 class DecoderLayer:

@@ -36,22 +36,22 @@ class LinearState(NamedTuple):
 
 
 class FeedForwardState(NamedTuple):
-    linear1_state: LinearState
-    linear2_state: LinearState
+    linear1: LinearState
+    linear2: LinearState
 
 
 class MultiHeadAttentionState(NamedTuple):
-    query_state: LinearState
-    key_state: LinearState
-    value_state: LinearState
-    output_state: LinearState
+    query: LinearState
+    key: LinearState
+    value: LinearState
+    output: LinearState
 
 
 class EncoderLayerState(NamedTuple):
-    layer_norm1_state: LayerNormState
-    self_attn_state: MultiHeadAttentionState
-    layer_norm2_state: LayerNormState
-    feed_forward_state: FeedForwardState
+    layer_norm1: LayerNormState
+    self_attn: MultiHeadAttentionState
+    layer_norm2: LayerNormState
+    feed_forward: FeedForwardState
 
 
 class DecoderLayerState(NamedTuple):
@@ -105,10 +105,23 @@ def to_jax_state(torch_module: nn.Module) -> Type[NamedTupleSubclass]:
 
     elif isinstance(torch_module, nn.TransformerEncoderLayer):
         return EncoderLayerState(
-            layer_norm1_state=to_jax_state(torch_module.norm1),
-            self_attn_state=to_jax_state(torch_module.self_attn),
-            layer_norm2_state=to_jax_state(torch_module.norm2),
-            feed_forward_state=FeedForwardState(
+            layer_norm1=to_jax_state(torch_module.norm1),
+            self_attn=to_jax_state(torch_module.self_attn),
+            layer_norm2=to_jax_state(torch_module.norm2),
+            feed_forward=FeedForwardState(
+                to_jax_state(torch_module.linear1),
+                to_jax_state(torch_module.linear2),
+            ),
+        )
+
+    elif isinstance(torch_module, nn.TransformerDecoderLayer):
+        return DecoderLayerState(
+            norm_attn=to_jax_state(torch_module.norm1),
+            self_attn=to_jax_state(torch_module.self_attn),
+            norm_src_attn=to_jax_state(torch_module.norm2),
+            src_attn=to_jax_state(torch_module.multihead_attn),
+            norm_ff=to_jax_state(torch_module.norm3),
+            feed_forward=FeedForwardState(
                 to_jax_state(torch_module.linear1),
                 to_jax_state(torch_module.linear2),
             ),

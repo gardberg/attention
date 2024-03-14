@@ -26,7 +26,7 @@ Run tests with `pytest`
 
 Filter for a specific test to run with `pytest -k test_name`
 
-Enable debug logs with `LOG_LEVEL=DEBUG pytest`
+Enable debug logs with `pytest --log-cli-level=DEBUG`
 
 Run formatting with `black .`
 
