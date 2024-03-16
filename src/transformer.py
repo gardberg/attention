@@ -29,9 +29,9 @@ class EncoderLayer:
     ) -> Array:
         """
         state:      NamedTuple of parameters
-        x:          Source input sequence (context_len, batch_size, emb_size)
+        x:          Target input sequence (tgt_len, batch_size, emb_size)
         rng:        Jax random key
-        mask:       Mask to apply to the input sequence x (context_len, context_len, batch_size, n_heads) (Optional)
+        mask:       Mask to apply to the input sequence x (tgt_len, tgt_len) (Optional)
         training:   Whether to apply dropout or not
         """
         rng1, rng2, rng3 = jax.random.split(rng, 3)
@@ -85,11 +85,11 @@ class DecoderLayer:
     ) -> Array:
         """
         state:      NamedTuple of parameters
-        x:          Decoder input sequence (context_len, batch_size, emb_size)
-        src:        Encoder input sequence (context_len, batch_size, emb_size)
+        x:          Decoder target input sequence (tgt_len, batch_size, emb_size)
+        src:        Encoder input sequence (src_len, batch_size, emb_size)
         rng:        Jax random key
-        mask:       Mask for x (context_len, context_len, batch_size, n_heads) (Optional)
-        src_mask:   Mask for src (context_len, context_len, batch_size, n_heads) (Optional)
+        mask:       Mask for x (tgt_len, tgt_len) (Optional)
+        src_mask:   Mask for src (src_len, src_len) (Optional)
         training:   Whether to apply dropout or not
         """
         rng1, rng2, rng3, rng4 = jax.random.split(rng, 4)

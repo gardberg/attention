@@ -5,6 +5,7 @@ from typing import Callable, Union
 from log_utils import logger
 from act import *
 from states import *
+from functools import lru_cache
 
 
 def batchnorm_1d(
@@ -200,7 +201,7 @@ class PreAttention:
         return self.dense.init_state(rng)
 
     def __call__(self, weight_matrix: Array, x: Array) -> Array:
-        # Batch batch_dim of x.shape: (seq_len, batch_size, emd_size)
+        # Batch batch_dim of x.shape: (context_len, batch_size, emd_size)
         if x.ndim > 3:
             raise ValueError(f"Input dim must be 2 or 3, got {x.ndim}")
         elif x.ndim == 3:
@@ -211,19 +212,33 @@ class PreAttention:
             return self.forward(weight_matrix, x)
 
 
+def create_causal_mask(tgt_len: int, src_len: int=None) -> Array:
+    """
+    Creates a causal mask tensor of shape (tgt_len, src_len) to be used in MultiHeadAttention forward pass.
+    """
+
+    if src_len is None: src_len = tgt_len
+
+    # return jnp.tril(jnp.ones((tgt_len, src_len), dtype=bool), k=0)
+    # True -> Not allowed to attend
+    return jnp.triu(jnp.ones((tgt_len, src_len), dtype=bool), k=1)
+
+    
 class MultiHeadAttention:
     """
     Attention with n_heads heads
     """
 
     def __init__(
-        self, emb_size: int, n_heads: int, out_bias: bool = False, v_bias: bool = True
+        self, emb_size: int, n_heads: int, out_bias: bool=False, v_bias: bool=True, causal: bool=False 
     ):
         """
         emb_size:   Total size of query, key and value. Will be split over the number of heads
         n_heads:    Number of individual attention heads
         bias:       Whether to use bias in the output linear layer
         v_bias:     Whether to use bias in the value linear layer
+        causal:     Whether to use a causal mask in the attention calculation.
+                    If False, no mask is used. Manually specifying a mask overrides this setting.
         """
 
         self.n_heads = n_heads
@@ -236,6 +251,7 @@ class MultiHeadAttention:
         self.value_fn = PreAttention(emb_size, n_heads, d_k=self.d_k, bias=v_bias)
 
         self.out = Linear(emb_size, emb_size, bias=out_bias)
+        self.causal = causal
 
         self.debug_states = dict()
 
@@ -248,14 +264,18 @@ class MultiHeadAttention:
             self.out.init_state(rngs[3]),
         )
 
-    def get_causal_mask(self, context_len: int, batch_size: int) -> Array:
-        # creates a causal mask of shape (context_len, context_len, batch_size, n_heads)
-        # mask[i, j, ...] = true -> i can not attend to j
-        base_mask = jnp.tril(jnp.ones((context_len, context_len), dtype=bool), k=0)
+    def _get_mask_batched(self, mask: Array, batch_size: int, n_heads: int) -> Array:
+        assert mask.ndim == 2, f"Expected mask.ndim == 2, got {mask.ndim}"
+        return jnp.tile(mask[:, :, None, None], (1, 1, batch_size, n_heads))
 
-        # tile into shape (context_len, context_len, batch_size, n_heads)
-        mask = jnp.tile(base_mask[:, :, None, None], (1, 1, batch_size, self.n_heads))
-        return mask
+    @lru_cache
+    def get_causal_mask(self, tgt_len: int, batch_size: int, src_len: int=None) -> Array:
+        # creates a causal mask of shape (tgt_len, src_len, batch_size, n_heads)
+        # mask[i, j, ...] = true -> i can not attend to j
+        base_mask = create_causal_mask(tgt_len, src_len=src_len)
+
+        # tile into shape (tgt_len, src_len, batch_size, n_heads)
+        return self._get_mask_batched(base_mask, batch_size, self.n_heads) 
 
     def forward(
         self,
@@ -265,11 +285,21 @@ class MultiHeadAttention:
         v: Array,
         mask: Array = None,
     ) -> Array:
-        # q, k, v shape: (context_len, batch_size, emb_size)
+        """
+        q.shape:    (tgt_len, batch_size, emb_size)
+        k, v shape: (src_len, batch_size, emb_size)
+        mask.shape: (tgt_len, src_len) or None
+        """
+
+        assert k.shape == v.shape, f"Expected k.shape == v.shape, got {k.shape} != {v.shape}"
 
         self.debug_states["input_query"] = q
 
-        context_len, batch_size, emb_size = q.shape
+        tgt_len, batch_size, emb_size = q.shape
+        src_len = k.shape[0]
+
+        if mask is None and self.causal:
+            mask = self.get_causal_mask(tgt_len, batch_size, src_len)
 
         query = self.query_fn(state.query, q)
         key = self.key_fn(state.key, k)
@@ -279,32 +309,36 @@ class MultiHeadAttention:
         self.debug_states["key"] = key
         self.debug_states["value"] = value
 
-        # shape: (context_len, batch_size, n_heads, d_k)
-        # calc q * k^T = s with shape (contex_len, context_len, batch_size, n_heads)
+        # q.shape: (tgt_len, batch_size, n_heads, d_k)
+        # k/v.shape: (src_len, batch_size, n_heads, d_k)
+        # calc q * k^T = s with shape (tgt_len, src_len, batch_size, n_heads)
 
         scores = jnp.einsum("cbhd,Cbhd->cCbh", query, key)
 
         self.debug_states["scores"] = scores
 
         assert scores.shape == (
-            context_len,
-            context_len,
+            tgt_len,
+            src_len,
             batch_size,
             self.n_heads,
-        ), f"Expected shape {(context_len, context_len, batch_size, self.n_heads)}, got {scores.shape}"
+        ), f"Expected shape {(tgt_len, src_len, batch_size, self.n_heads)}, got {scores.shape}"
 
         scaled_scores = scores * (1 / jnp.sqrt(self.d_k))
 
         self.debug_states["scaled_scores"] = scaled_scores
         self.debug_states["mask"] = mask
 
-        # TODO: At the moment False => mask. Pytorch default: True => mask. Switch?
         if mask is not None:
             assert (
-                mask.shape == scores.shape
-            ), f"Mask shape {mask.shape} must match scores shape {scores.shape}. To create a mask, use MultiHeadAttention.get_causal_mask()"
-            # replace values in scores with float('-inf') where mask is false
-            scaled_scores = jnp.where(mask, scaled_scores, float("-inf"))
+                mask.shape[:2] == scores.shape[:2]
+            ), f"Mask shape {mask.shape[:2]} must match scores shape {scores.shape[:2]}. To create a causal mask, use create_causal_mask()"
+            logger.debug(f"mask: {mask}")
+            mask = self._get_mask_batched(mask, batch_size, self.n_heads)
+
+            # replace values in scores with float('-inf') where mask is True
+            scaled_scores = jnp.where(mask, float("-inf"), scaled_scores)
+
 
         self.debug_states["masked_scaled_scores"] = scaled_scores
 
@@ -313,12 +347,12 @@ class MultiHeadAttention:
         self.debug_states["softmax"] = s2
 
         attn = jnp.einsum("cCbh,Cbhd->cbhd", s2, value)
-        # attn.shape: (context_len, batch_size, n_heads, d_k)
+        # attn.shape: (tgt_len, batch_size, n_heads, d_k)
 
         self.debug_states["scaled_values"] = attn
 
         # concat heads
-        attn = attn.reshape((context_len, batch_size, emb_size))
+        attn = attn.reshape((tgt_len, batch_size, emb_size))
 
         self.debug_states["concat_heads"] = attn
 
@@ -327,7 +361,7 @@ class MultiHeadAttention:
 
         self.debug_states["out"] = out
 
-        # out.shape: (context_len, batch_size, emb_dim)
+        # out.shape: (tgt_len, batch_size, emb_dim)
         return out
 
     def __call__(
