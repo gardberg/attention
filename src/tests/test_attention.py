@@ -122,7 +122,9 @@ def test_cross_attention():
     torch_mha = torch.nn.MultiheadAttention(emb_size, n_heads, bias=False)
 
     with torch.no_grad():
-        y_torch = torch_mha(target, source, source, need_weights=False)[0].detach().numpy()
+        y_torch = (
+            torch_mha(target, source, source, need_weights=False)[0].detach().numpy()
+        )
 
     # Jax
     jax_mha = MultiHeadAttention(emb_size, n_heads, out_bias=False, v_bias=False)

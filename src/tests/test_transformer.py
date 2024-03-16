@@ -22,13 +22,14 @@ def test_transformer_encoder_layer_init():
     state = encoder_layer.init_state(jax.random.PRNGKey(0))
     out = encoder_layer(state, x, jax.random.PRNGKey(0))
 
+
 def test_transformer_decoder_layer_init():
     x = jnp.ones((CONTEXT_LEN, 2, 2))
 
     decoder_layer = EncoderLayer(emb_size=2, n_heads=2, d_ff=2, dropout=0.1)
     state = decoder_layer.init_state(jax.random.PRNGKey(0))
     out = decoder_layer(state, x, jax.random.PRNGKey(0))
-    
+
 
 # https://pytorch.org/docs/stable/generated/torch.nn.Transformer.html
 @pytest.mark.parametrize("use_mask", [False, True])
@@ -51,7 +52,6 @@ def test_transformer_encoder_layer(use_mask):
         torch_mask = torch.from_numpy(np.array(jax_mask))
         logger.debug(f"torch_mask = {torch_mask}")
 
-
     # Torch
     torch_encoder_layer = TransformerEncoderLayer(
         emb_size, n_heads, dim_feedforward=d_ff, dropout=dropout, norm_first=True
@@ -73,13 +73,12 @@ def test_transformer_encoder_layer(use_mask):
 
 
 @pytest.mark.parametrize("use_mask", [False, True])
-def test_transformer_decoder_layer(use_mask: bool):    
-
+def test_transformer_decoder_layer(use_mask: bool):
     emb_size = 4
     n_heads = 1
     d_ff = 8
     dropout = 0.0
-    batch_size = 2    
+    batch_size = 2
 
     tgt = torch.randn(CONTEXT_LEN, batch_size, emb_size, requires_grad=False)
     tgt_jnp = jnp.array(tgt.detach().numpy())
@@ -100,20 +99,33 @@ def test_transformer_decoder_layer(use_mask: bool):
 
         tgt_mask_torch = torch.from_numpy(np.array(tgt_mask))
         src_mask_torch = torch.from_numpy(np.array(src_mask))
-    
+
     # Torch
     torch_decoder_layer = TransformerDecoderLayer(
         emb_size, n_heads, dim_feedforward=d_ff, dropout=dropout, norm_first=True
     )
 
     with torch.no_grad():
-        y_torch = torch_decoder_layer(tgt=tgt, memory=src, tgt_mask=tgt_mask_torch, memory_mask=src_mask_torch).detach().numpy()
+        y_torch = (
+            torch_decoder_layer(
+                tgt=tgt, memory=src, tgt_mask=tgt_mask_torch, memory_mask=src_mask_torch
+            )
+            .detach()
+            .numpy()
+        )
 
     # Jax
     decoder_layer = DecoderLayer(emb_size, n_heads, d_ff, dropout)
     decoder_state = to_jax_state(torch_decoder_layer)
 
-    y = decoder_layer(decoder_state, x=tgt_jnp, src=src_jnp, mask=tgt_mask, src_mask=src_mask, rng=jax.random.PRNGKey(0))
+    y = decoder_layer(
+        decoder_state,
+        x=tgt_jnp,
+        src=src_jnp,
+        mask=tgt_mask,
+        src_mask=src_mask,
+        rng=jax.random.PRNGKey(0),
+    )
 
     logger.debug(f"y_jax.shape = {y.shape}")
     logger.debug(f"y_torch.shape = {y_torch.shape}")

@@ -212,25 +212,31 @@ class PreAttention:
             return self.forward(weight_matrix, x)
 
 
-def create_causal_mask(tgt_len: int, src_len: int=None) -> Array:
+def create_causal_mask(tgt_len: int, src_len: int = None) -> Array:
     """
     Creates a causal mask tensor of shape (tgt_len, src_len) to be used in MultiHeadAttention forward pass.
     """
 
-    if src_len is None: src_len = tgt_len
+    if src_len is None:
+        src_len = tgt_len
 
     # return jnp.tril(jnp.ones((tgt_len, src_len), dtype=bool), k=0)
     # True -> Not allowed to attend
     return jnp.triu(jnp.ones((tgt_len, src_len), dtype=bool), k=1)
 
-    
+
 class MultiHeadAttention:
     """
     Attention with n_heads heads
     """
 
     def __init__(
-        self, emb_size: int, n_heads: int, out_bias: bool=False, v_bias: bool=True, causal: bool=False 
+        self,
+        emb_size: int,
+        n_heads: int,
+        out_bias: bool = False,
+        v_bias: bool = True,
+        causal: bool = False,
     ):
         """
         emb_size:   Total size of query, key and value. Will be split over the number of heads
@@ -269,13 +275,15 @@ class MultiHeadAttention:
         return jnp.tile(mask[:, :, None, None], (1, 1, batch_size, n_heads))
 
     @lru_cache
-    def get_causal_mask(self, tgt_len: int, batch_size: int, src_len: int=None) -> Array:
+    def get_causal_mask(
+        self, tgt_len: int, batch_size: int, src_len: int = None
+    ) -> Array:
         # creates a causal mask of shape (tgt_len, src_len, batch_size, n_heads)
         # mask[i, j, ...] = true -> i can not attend to j
         base_mask = create_causal_mask(tgt_len, src_len=src_len)
 
         # tile into shape (tgt_len, src_len, batch_size, n_heads)
-        return self._get_mask_batched(base_mask, batch_size, self.n_heads) 
+        return self._get_mask_batched(base_mask, batch_size, self.n_heads)
 
     def forward(
         self,
@@ -291,7 +299,9 @@ class MultiHeadAttention:
         mask.shape: (tgt_len, src_len) or None
         """
 
-        assert k.shape == v.shape, f"Expected k.shape == v.shape, got {k.shape} != {v.shape}"
+        assert (
+            k.shape == v.shape
+        ), f"Expected k.shape == v.shape, got {k.shape} != {v.shape}"
 
         self.debug_states["input_query"] = q
 
@@ -338,7 +348,6 @@ class MultiHeadAttention:
 
             # replace values in scores with float('-inf') where mask is True
             scaled_scores = jnp.where(mask, float("-inf"), scaled_scores)
-
 
         self.debug_states["masked_scaled_scores"] = scaled_scores
 

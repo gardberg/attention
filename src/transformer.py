@@ -57,7 +57,6 @@ class EncoderLayer:
         )
 
 
-
 class DecoderLayer:
     def __init__(
         self, emb_size: int, n_heads: int, d_ff: int = 2048, dropout: float = 0.0

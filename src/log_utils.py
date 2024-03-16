@@ -22,10 +22,12 @@ logging.basicConfig(
 # Disable existing loggers
 # Might not catch earlier printed logs by other imported modules.
 # Is there a way to make sure this is run after all imports?
-logging.config.dictConfig({
-    "version": 1,
-    "disable_existing_loggers": True,
-})
+logging.config.dictConfig(
+    {
+        "version": 1,
+        "disable_existing_loggers": True,
+    }
+)
 
 logger = logging.getLogger("attention")
 logger.setLevel(LOG_LEVEL)

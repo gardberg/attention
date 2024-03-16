@@ -44,4 +44,3 @@ def state_to_str(state: Union[NamedTupleSubclass, Array, bool], indent=0):
         result.append(f"\t{field_str}{state_to_str(value, indent + 1)}")
 
     return "\n".join(result)
-
