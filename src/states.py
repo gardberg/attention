@@ -3,7 +3,6 @@ import jax
 from jax import Array
 import jax.numpy as jnp
 
-import torch
 from torch import nn
 
 
@@ -54,6 +53,11 @@ class EncoderLayerState(NamedTuple):
     feed_forward: FeedForwardState
 
 
+class EncoderState(NamedTuple):
+    layers: list[EncoderLayerState]
+    norm: LayerNormState
+
+
 class DecoderLayerState(NamedTuple):
     norm_attn: LayerNormState
     self_attn: MultiHeadAttentionState
@@ -61,6 +65,10 @@ class DecoderLayerState(NamedTuple):
     src_attn: MultiHeadAttentionState
     norm_ff: LayerNormState
     feed_forward: FeedForwardState
+
+
+class DecoderState(NamedTuple):
+    layers: list[DecoderLayerState]
 
 
 # TODO: Move into separate file
@@ -125,6 +133,16 @@ def to_jax_state(torch_module: nn.Module) -> Type[NamedTupleSubclass]:
                 to_jax_state(torch_module.linear1),
                 to_jax_state(torch_module.linear2),
             ),
+        )
+
+    elif isinstance(torch_module, nn.TransformerEncoder):
+        print(torch_module.layers)
+        print(torch_module.norm)
+        return EncoderState(
+            layers=[
+                to_jax_state(layer) for layer in torch_module.layers
+            ],
+            norm=to_jax_state(torch_module.norm) if torch_module.norm is not None else None,
         )
 
     else:
