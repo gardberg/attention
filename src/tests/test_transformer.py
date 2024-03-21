@@ -1,13 +1,19 @@
 import jax
 import jax.numpy as jnp
 from jax import Array
-from torch.nn import TransformerEncoderLayer, TransformerDecoderLayer, TransformerEncoder, TransformerDecoder, Transformer
+from torch.nn import (
+    TransformerEncoderLayer,
+    TransformerDecoderLayer,
+    TransformerEncoder,
+    TransformerDecoder,
+    Transformer,
+)
 import torch
 import numpy as np
 from testing_utils import TOL
 import pytest
 
-from transformer import EncoderLayer, DecoderLayer, Encoder
+from transformer import EncoderLayer, DecoderLayer, Encoder, Decoder
 from states import to_jax_state
 from log_utils import logger
 from attention import create_causal_mask, LayerNorm
@@ -30,7 +36,7 @@ def test_transformer_decoder_layer_init():
     state = decoder_layer.init_state(jax.random.PRNGKey(0))
     out = decoder_layer(state, x, jax.random.PRNGKey(0))
 
-    
+
 def test_transformer_encoder_init():
     x = jnp.ones((CONTEXT_LEN, 2, 2))
 
@@ -38,6 +44,15 @@ def test_transformer_encoder_init():
     encoder = Encoder(encoder_layer, 2)
     state = encoder.init_state(jax.random.PRNGKey(0))
     out = encoder(state, x, jax.random.PRNGKey(0))
+
+
+def test_transformer_decoder_init():
+    x = jnp.ones((CONTEXT_LEN, 2, 2))
+
+    decoder_layer = DecoderLayer(emb_size=2, n_heads=2, d_ff=2, dropout=0.1)
+    decoder = Decoder(decoder_layer, 2)
+    state = decoder.init_state(jax.random.PRNGKey(0))
+    out = decoder(state, x, x, jax.random.PRNGKey(0))
 
 
 # https://pytorch.org/docs/stable/generated/torch.nn.Transformer.html
@@ -123,9 +138,8 @@ def test_transformer_encoder(use_mask):
 
     logger.debug(f"y_jax.shape = {y.shape}")
     logger.debug(f"y_torch.shape = {y_torch.shape}")
-    
+
     assert np.allclose(y_torch, y, atol=TOL), f"y_torch = {y_torch}, y = {y}"
-        
 
 
 @pytest.mark.parametrize("use_mask", [False, True])
@@ -177,10 +191,66 @@ def test_transformer_decoder_layer(use_mask: bool):
     y = decoder_layer(
         decoder_state,
         tgt=tgt_jnp,
-        src=src_jnp,
-        mask=tgt_mask,
-        src_mask=src_mask,
+        memory=src_jnp,
+        tgt_mask=tgt_mask,
+        memory_mask=src_mask,
         rng=jax.random.PRNGKey(0),
+    )
+
+    logger.debug(f"y_jax.shape = {y.shape}")
+    logger.debug(f"y_torch.shape = {y_torch.shape}")
+
+    assert np.allclose(y_torch, y, atol=TOL), f"y_torch = {y_torch}, y = {y}"
+
+
+@pytest.mark.parametrize("use_mask", [False, True])
+def test_transformer_decoder(use_mask):
+    emb_size = 4
+    n_heads = 1
+    d_ff = 8
+    dropout = 0.0
+    batch_size = 2
+
+    tgt = torch.randn(CONTEXT_LEN, batch_size, emb_size, requires_grad=False)
+    tgt_jnp = jnp.array(tgt.detach().numpy())
+    memory = torch.randn(CONTEXT_LEN + 1, batch_size, emb_size, requires_grad=False)
+    memory_jnp = jnp.array(memory.detach().numpy())
+
+    tgt_mask = None
+    memory_mask = None
+    tgt_mask_torch = None
+    memory_mask_torch = None
+    if use_mask:
+        tgt_mask = create_causal_mask(CONTEXT_LEN, CONTEXT_LEN)
+        memory_mask = create_causal_mask(CONTEXT_LEN, CONTEXT_LEN + 1)
+
+        tgt_mask_torch = torch.from_numpy(np.array(tgt_mask))
+        memory_mask_torch = torch.from_numpy(np.array(memory_mask))
+
+    # Torch
+    torch_decoder_layer = TransformerDecoderLayer(
+        emb_size, n_heads, dim_feedforward=d_ff, dropout=dropout, norm_first=True
+    )
+    torch_norm = torch.nn.LayerNorm(emb_size)
+    torch_decoder = TransformerDecoder(torch_decoder_layer, 2, norm=torch_norm)
+
+    with torch.no_grad():
+        y_torch = (
+            torch_decoder(
+                tgt, memory, tgt_mask=tgt_mask_torch, memory_mask=memory_mask_torch
+            )
+            .detach()
+            .numpy()
+        )
+
+    # Jax
+    decoder_layer = DecoderLayer(emb_size, n_heads, d_ff, dropout)
+    norm = LayerNorm(emb_size)
+
+    decoder_state = to_jax_state(torch_decoder)
+    decoder = Decoder(decoder_layer, 2, norm=norm)
+    y = decoder(
+        decoder_state, tgt_jnp, memory_jnp, jax.random.PRNGKey(0), tgt_mask, memory_mask
     )
 
     logger.debug(f"y_jax.shape = {y.shape}")

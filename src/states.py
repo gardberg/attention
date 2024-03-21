@@ -69,6 +69,7 @@ class DecoderLayerState(NamedTuple):
 
 class DecoderState(NamedTuple):
     layers: list[DecoderLayerState]
+    norm: LayerNormState
 
 
 # TODO: Move into separate file
@@ -136,13 +137,19 @@ def to_jax_state(torch_module: nn.Module) -> Type[NamedTupleSubclass]:
         )
 
     elif isinstance(torch_module, nn.TransformerEncoder):
-        print(torch_module.layers)
-        print(torch_module.norm)
         return EncoderState(
-            layers=[
-                to_jax_state(layer) for layer in torch_module.layers
-            ],
-            norm=to_jax_state(torch_module.norm) if torch_module.norm is not None else None,
+            layers=[to_jax_state(layer) for layer in torch_module.layers],
+            norm=to_jax_state(torch_module.norm)
+            if torch_module.norm is not None
+            else None,
+        )
+
+    elif isinstance(torch_module, nn.TransformerDecoder):
+        return DecoderState(
+            layers=[to_jax_state(layer) for layer in torch_module.layers],
+            norm=to_jax_state(torch_module.norm)
+            if torch_module.norm is not None
+            else None,
         )
 
     else:
