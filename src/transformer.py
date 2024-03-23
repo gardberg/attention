@@ -25,20 +25,20 @@ class EncoderLayer:
         state: EncoderLayerState,
         src: Array,
         rng: Array,
-        mask: Array = None,
+        src_mask: Array = None,
         training: bool = True,
     ) -> Array:
         """
         state:      NamedTuple of parameters
         src:        Transformer source input sequence (src_len, batch_size, emb_size)
         rng:        Jax random key
-        mask:       Mask to apply to the input sequence (src_len, src_len) (Optional)
+        src_mask:   Mask to apply to the input sequence (src_len, src_len) (Optional)
         training:   Whether to apply dropout or not
         """
         rng1, rng2, rng3 = jax.random.split(rng, 3)
 
         z = self.norm_attn(state.layer_norm1, src)
-        attn = self.self_attn(state.self_attn, z, z, z, mask)
+        attn = self.self_attn(state.self_attn, z, z, z, src_mask)
         src_drop = dropout(attn, self.dropout, rng1, training)
         src += src_drop
 
@@ -80,15 +80,17 @@ class Encoder:
         state: EncoderState,
         src: Array,
         rng: Array,
-        mask: Array = None,
+        src_mask: Array = None,
         training: bool = True,
     ) -> Array:
         """
         state:      NamedTuple of parameters
         src:        Source input sequence (src_len, batch_size, emb_size)
+        rng:        Jax random key
+        src_mask:   Mask for the input sequence (src_len, src_len)
         """
         for layer, layer_state in zip(self.layers, state.layers):
-            src = layer(layer_state, src, rng, mask, training)
+            src = layer(layer_state, src, rng, src_mask, training)
 
         return self.norm(state.norm, src) if self.norm is not None else src
 
@@ -206,3 +208,60 @@ class Decoder:
             ],
             norm=self.norm.init_state(rngs[-1]) if self.norm is not None else None,
         )
+
+
+class Transformer:
+    """
+    Norm-first Encoder-decoder Transformer
+    input: (tgt_len, batch_size, emb_size) -> 
+    output: (tgt_len, batch_size, emb_size)
+
+    Assumes inputs are positionally encoded embeddings
+    """
+
+    def __init__(
+        self,
+        emb_size: int = 512,
+        n_heads: int = 8,
+        n_layers: int = 6,  # Number of encoder and decoder layers
+        d_ff: int = 2048,
+        dropout: float = 0.0,
+    ):
+        self.encoder = Encoder(
+            EncoderLayer(emb_size, n_heads, d_ff, dropout),
+            n_layers,
+            LayerNorm(emb_size),
+        )
+        self.decoder = Decoder(
+            DecoderLayer(emb_size, n_heads, d_ff, dropout),
+            n_layers,
+            LayerNorm(emb_size),
+        )
+
+    def __call__(
+        self,
+        state: TransformerState,
+        src: Array,
+        tgt: Array,
+        rng: Array,
+        src_mask: Array = None,
+        tgt_mask: Array = None,
+        memory_mask: Array = None,
+        training: bool = True,
+    ) -> Array:
+        """
+        src:           Encoder source input sequence of token embeddings (src_len, batch_size, emb_size)
+        tgt:           Decoder target input sequence of token embeddings (tgt_len, batch_size, emb_size)
+        rng:           Jax random key
+        src_mask:      Mask for the encoder source input sequence (src_len, src_len)
+        tgt_mask:      Mask for the decoder target input sequence (tgt_len, tgt_len)
+        memory_mask:   Mask for the encoder output (tgt_len, src_len)
+
+        output.shape:  (tgt_len, batch_size, emb_size)
+        """
+
+        memory = self.encoder(state.encoder, src, rng, src_mask, training)
+        return self.decoder(
+            state.decoder, tgt, memory, rng, tgt_mask, memory_mask, training
+        )
+ 

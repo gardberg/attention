@@ -173,6 +173,28 @@ class FeedForward:
         return self.layer2(state.linear2, x)
 
 
+class Embedding:
+    """
+    Learned lookup embeddings of size (n_embeddings, emb_size).
+    Assumes that the input is a sequence of indices corresponding to items in vocabulary.
+    """
+
+    def __init__(self, n_embeddings: int, emb_size: int):
+        self.n_embeddings = n_embeddings
+        self.emb_size = emb_size
+
+    def __call__(self, state: EmbeddingState, indices: Array) -> Array:
+        # indices.shape:            (*,), e.g. (context_len, batch_size)
+        # output.shape:             (*, emb_size)
+        # state.embeddings.shape:   (vocab_size, emb_size)
+        return jnp.take(state.embeddings, indices, axis=0)
+
+    def init_state(self, rng: Array) -> EmbeddingState:
+        return EmbeddingState(
+            embeddings=random.normal(rng, (self.n_embeddings, self.emb_size))
+        )
+
+
 class PreAttention:
     """
     Linear layer transforming input to query, key or value

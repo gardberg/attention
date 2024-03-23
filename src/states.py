@@ -39,6 +39,10 @@ class FeedForwardState(NamedTuple):
     linear2: LinearState
 
 
+class EmbeddingState(NamedTuple):
+    embeddings: Array
+
+
 class MultiHeadAttentionState(NamedTuple):
     query: LinearState
     key: LinearState
@@ -70,6 +74,18 @@ class DecoderLayerState(NamedTuple):
 class DecoderState(NamedTuple):
     layers: list[DecoderLayerState]
     norm: LayerNormState
+
+
+class TransformerState(NamedTuple):
+    encoder: EncoderState
+    decoder: DecoderState
+
+
+class Seq2SeqTransformerState(NamedTuple):
+    transformer: TransformerState
+    src_embed: EmbeddingState
+    tgt_embed: EmbeddingState
+    generator: LinearState
 
 
 # TODO: Move into separate file
@@ -151,6 +167,15 @@ def to_jax_state(torch_module: nn.Module) -> Type[NamedTupleSubclass]:
             if torch_module.norm is not None
             else None,
         )
+
+    elif isinstance(torch_module, nn.Transformer):
+        return TransformerState(
+            encoder=to_jax_state(torch_module.encoder),
+            decoder=to_jax_state(torch_module.decoder),
+        )
+
+    elif isinstance(torch_module, nn.Embedding):
+        return EmbeddingState(jnp.array(torch_module.weight.detach()))
 
     else:
         raise NotImplementedError(

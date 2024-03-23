@@ -1,19 +1,13 @@
 import jax
 import jax.numpy as jnp
 from jax import Array
-from torch.nn import (
-    TransformerEncoderLayer,
-    TransformerDecoderLayer,
-    TransformerEncoder,
-    TransformerDecoder,
-    Transformer,
-)
+
 import torch
 import numpy as np
 from testing_utils import TOL
 import pytest
 
-from transformer import EncoderLayer, DecoderLayer, Encoder, Decoder
+from transformer import EncoderLayer, DecoderLayer, Encoder, Decoder, Transformer
 from states import to_jax_state
 from log_utils import logger
 from attention import create_causal_mask, LayerNorm
@@ -77,7 +71,7 @@ def test_transformer_encoder_layer(use_mask):
         logger.debug(f"torch_mask = {torch_mask}")
 
     # Torch
-    torch_encoder_layer = TransformerEncoderLayer(
+    torch_encoder_layer = torch.nn.TransformerEncoderLayer(
         emb_size, n_heads, dim_feedforward=d_ff, dropout=dropout, norm_first=True
     )
 
@@ -88,7 +82,7 @@ def test_transformer_encoder_layer(use_mask):
     encoder_layer = EncoderLayer(emb_size, n_heads, d_ff, dropout)
 
     encoder_state = to_jax_state(torch_encoder_layer)
-    y = encoder_layer(encoder_state, x_jnp, mask=jax_mask, rng=jax.random.PRNGKey(0))
+    y = encoder_layer(encoder_state, x_jnp, src_mask=jax_mask, rng=jax.random.PRNGKey(0))
 
     logger.debug(f"y_jax.shape = {y.shape}")
     logger.debug(f"y_torch.shape = {y_torch.shape}")
@@ -119,11 +113,11 @@ def test_transformer_encoder(use_mask):
         logger.debug(f"torch_mask = {torch_mask}")
 
     # Torch
-    torch_encoder_layer = TransformerEncoderLayer(
+    torch_encoder_layer = torch.nn.TransformerEncoderLayer(
         emb_size, n_heads, dim_feedforward=d_ff, dropout=dropout, norm_first=True
     )
     torch_norm = torch.nn.LayerNorm(emb_size)
-    torch_encoder = TransformerEncoder(torch_encoder_layer, N_LAYERS, norm=torch_norm)
+    torch_encoder = torch.nn.TransformerEncoder(torch_encoder_layer, N_LAYERS, norm=torch_norm)
 
     with torch.no_grad():
         y_torch = torch_encoder(x, mask=torch_mask).detach().numpy()
@@ -134,7 +128,7 @@ def test_transformer_encoder(use_mask):
 
     encoder_state = to_jax_state(torch_encoder)
     encoder = Encoder(encoder_layer, N_LAYERS, norm=norm)
-    y = encoder(encoder_state, x_jnp, mask=jax_mask, rng=jax.random.PRNGKey(0))
+    y = encoder(encoder_state, x_jnp, src_mask=jax_mask, rng=jax.random.PRNGKey(0))
 
     logger.debug(f"y_jax.shape = {y.shape}")
     logger.debug(f"y_torch.shape = {y_torch.shape}")
@@ -171,7 +165,7 @@ def test_transformer_decoder_layer(use_mask: bool):
         src_mask_torch = torch.from_numpy(np.array(src_mask))
 
     # Torch
-    torch_decoder_layer = TransformerDecoderLayer(
+    torch_decoder_layer = torch.nn.TransformerDecoderLayer(
         emb_size, n_heads, dim_feedforward=d_ff, dropout=dropout, norm_first=True
     )
 
@@ -228,11 +222,11 @@ def test_transformer_decoder(use_mask):
         memory_mask_torch = torch.from_numpy(np.array(memory_mask))
 
     # Torch
-    torch_decoder_layer = TransformerDecoderLayer(
+    torch_decoder_layer = torch.nn.TransformerDecoderLayer(
         emb_size, n_heads, dim_feedforward=d_ff, dropout=dropout, norm_first=True
     )
     torch_norm = torch.nn.LayerNorm(emb_size)
-    torch_decoder = TransformerDecoder(torch_decoder_layer, 2, norm=torch_norm)
+    torch_decoder = torch.nn.TransformerDecoder(torch_decoder_layer, 2, norm=torch_norm)
 
     with torch.no_grad():
         y_torch = (
@@ -257,3 +251,58 @@ def test_transformer_decoder(use_mask):
     logger.debug(f"y_torch.shape = {y_torch.shape}")
 
     assert np.allclose(y_torch, y, atol=TOL), f"y_torch = {y_torch}, y = {y}"
+
+
+@pytest.mark.parametrize("use_mask", [False, True])
+def test_transformer(use_mask):
+    # TODO: add test with causal masks
+
+    batch_size = 2
+    emb_size = 4
+    dropout = 0.0
+
+    n_heads = 2
+    n_layers = 2
+    d_ff = 4
+
+    target_len = CONTEXT_LEN + 1
+
+    src = torch.randn(CONTEXT_LEN, batch_size, emb_size, requires_grad=False)
+    tgt = torch.randn(target_len, batch_size, emb_size, requires_grad=False)
+
+    # Torch
+    torch_transformer = torch.nn.Transformer(
+        d_model=emb_size,
+        nhead=n_heads,
+        num_encoder_layers=n_layers,
+        num_decoder_layers=n_layers,
+        dim_feedforward=d_ff,
+        norm_first=True,
+        dropout=dropout,
+    )
+
+    with torch.no_grad():
+        y_torch = torch_transformer(src, tgt).detach().numpy()
+
+    # Jax
+    src_jnp = jnp.array(src.detach().numpy())
+    tgt_jnp = jnp.array(tgt.detach().numpy())
+
+    jax_transformer = Transformer(
+        emb_size=emb_size,
+        n_heads=n_heads,
+        n_layers=n_layers,
+        d_ff=d_ff,
+        dropout=dropout,
+    )
+
+    state = to_jax_state(torch_transformer)
+
+    y_jax = jax_transformer(state, src_jnp, tgt_jnp, jax.random.PRNGKey(0))
+    logger.debug(f"y_jax.shape = {y_jax.shape}")
+    logger.debug(f"y_jax: {y_jax}")
+
+    logger.debug(f"y_torch.shape = {y_torch.shape}")
+    logger.debug(f"y_torch: {y_torch}")
+
+    assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"

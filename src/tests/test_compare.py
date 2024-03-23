@@ -217,3 +217,26 @@ def test_rope(shape: tuple):
     res = apply_rope(x)
 
     assert np.allclose(res, expected, atol=TOL), f"res = {res}, expected = {expected}"
+
+
+@pytest.mark.parametrize("shape", [(2,), (2, 2)])
+def test_learned_embeddings(shape: tuple):
+    VOCAB_SIZE = 16
+    EMB_DIM = 2
+
+    indices = np.random.randint(0, VOCAB_SIZE, shape)
+
+    # Torch
+    torch_emb = torch.nn.Embedding(VOCAB_SIZE, EMB_DIM)
+
+    with torch.no_grad():
+        y_torch = torch_emb(torch.tensor(indices)).numpy()
+
+    # Jax
+
+    jax_emb = Embedding(VOCAB_SIZE, EMB_DIM)
+    embedding_state = to_jax_state(torch_emb)
+
+    y_jax = jax_emb(embedding_state, jnp.array(indices))
+
+    assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
