@@ -1,7 +1,5 @@
-import jax.numpy as jnp
 import jax
 from attention import *
-from act import relu
 from jax import Array
 
 
@@ -259,9 +257,69 @@ class Transformer:
 
         output.shape:  (tgt_len, batch_size, emb_size)
         """
+        rng1, rng2 = jax.random.split(rng, 2)
 
-        memory = self.encoder(state.encoder, src, rng, src_mask, training)
+        memory = self.encoder(state.encoder, src, rng1, src_mask, training)
         return self.decoder(
-            state.decoder, tgt, memory, rng, tgt_mask, memory_mask, training
+            state.decoder, tgt, memory, rng2, tgt_mask, memory_mask, training
         )
  
+    def init_state(self, rng: Array) -> TransformerState:
+        rngs = jax.random.split(rng, 3)
+        return TransformerState(
+            encoder=self.encoder.init_state(rngs[0]),
+            decoder=self.decoder.init_state(rngs[1]),
+        )
+
+
+class Seq2SeqTransformer:
+    
+    def __init__(self, vocab_size: int, emb_size: int, **kwargs):
+        self.emb_size = emb_size
+        self.transformer = Transformer(emb_size=emb_size, **kwargs)
+        # Assume same vocab for input and output sequence
+        self.embed_src = Embedding(vocab_size, emb_size)
+        self.embed_tgt = Embedding(vocab_size, emb_size)
+        self.project_out = Linear(emb_size, vocab_size)
+        self.encode_position = PositionalEncoding(emb_size)
+
+    def __call__(
+        self,
+        state: Seq2SeqTransformerState,
+        src: Array,
+        tgt: Array,
+        rng: Array,
+        src_mask: Array = None,
+        tgt_mask: Array = None,
+        memory_mask: Array = None,
+        training: bool = True,
+    ) -> Array:
+        # src.shape: (src_len, batch_size)
+        # tgt.shape: (tgt_len, batch_size)
+        # returns: (seq_len, batch_size, vocab_size) of unnormalized token probabilities
+
+        rngs = jax.random.split(rng, 3)
+
+        src_emb = self.embed_src(state.embed_src, src) * jnp.sqrt(self.emb_size)
+        src_emb = self.encode_position(src_emb, rngs[0])
+
+        tgt_emb = self.embed_tgt(state.embed_tgt, tgt) * jnp.sqrt(self.emb_size)
+        tgt_emb = self.encode_position(tgt_emb, rngs[1])
+
+        outputs = self.transformer(
+            state.transformer, src_emb, tgt_emb, rngs[2], src_mask, tgt_mask, memory_mask, training
+        )
+        return self.project_out(state.project_out, outputs)
+
+    def init_state(self, rng: Array) -> Seq2SeqTransformerState:
+        rngs = jax.random.split(rng, 4)
+        return Seq2SeqTransformerState(
+            transformer=self.transformer.init_state(rngs[0]),
+            embed_src=self.embed_src.init_state(rngs[1]),
+            embed_tgt=self.embed_tgt.init_state(rngs[2]),
+            project_out=self.project_out.init_state(rngs[3]),
+        )
+
+    def predict(self, state: Seq2SeqTransformerState, src: Array, tgt: Array, rng: Array):
+        # TODO: full greedy decoding using Tokenizer 
+        pass

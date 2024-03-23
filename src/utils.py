@@ -1,8 +1,11 @@
 import os
 import jax
 from jax import Array
+import jax.numpy as jnp
+import numpy as np
 from typing import Union
 from attention import NamedTupleSubclass
+from log_utils import logger
 
 os.environ["TIKTOKEN_CACHE_DIR"] = "../.cache"
 import tiktoken
@@ -17,13 +20,17 @@ class Tokenizer:
         except:
             raise Exception(f"Could not download or find tiktoken tokenizer: '{name}'")
 
-    def encode(self, text: str) -> Array:
-        enc_list = self.encoding.encode(text)
-        return jax.numpy.array(enc_list)
+    def encode(self, text: str) -> list[int]:
+        return self.encoding.encode(text)
+    
+    def encode_batch(self, texts: list[str]) -> list[list[int]]:
+        return self.encoding.encode_batch(texts)
+        
+    def decode(self, tokens: list[int]) -> str:
+        return self.encoding.decode(tokens)
 
-    # TODO: How do we handle batched array?
-    def decode(self, enc: Array) -> str:
-        return self.encoding.decode(enc.tolist())
+    def decode_batch(self, tokens: list[list[int]]) -> list[str]:
+        return self.encoding.decode_batch(tokens)
 
 
 def state_to_str(state: Union[NamedTupleSubclass, Array, bool], indent=0):

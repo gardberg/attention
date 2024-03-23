@@ -48,6 +48,14 @@ def test_transformer_decoder_init():
     state = decoder.init_state(jax.random.PRNGKey(0))
     out = decoder(state, x, x, jax.random.PRNGKey(0))
 
+    
+def test_transformer_init():
+    x = jnp.ones((CONTEXT_LEN, 2, 2))
+
+    transformer = Transformer(emb_size=2, n_heads=2, n_layers=2, d_ff=2, dropout=0.1)
+    state = transformer.init_state(jax.random.PRNGKey(0))
+    out = transformer(state, x, x, jax.random.PRNGKey(0))
+
 
 # https://pytorch.org/docs/stable/generated/torch.nn.Transformer.html
 @pytest.mark.parametrize("use_mask", [False, True])
@@ -108,9 +116,7 @@ def test_transformer_encoder(use_mask):
     torch_mask = None
     if use_mask:
         jax_mask = create_causal_mask(CONTEXT_LEN, CONTEXT_LEN)
-        logger.debug(f"jax_mask = {jax_mask}")
         torch_mask = torch.from_numpy(np.array(jax_mask))
-        logger.debug(f"torch_mask = {torch_mask}")
 
     # Torch
     torch_encoder_layer = torch.nn.TransformerEncoderLayer(
@@ -157,9 +163,7 @@ def test_transformer_decoder_layer(use_mask: bool):
     src_mask_torch = None
     if use_mask:
         tgt_mask = create_causal_mask(CONTEXT_LEN, CONTEXT_LEN)
-        logger.debug(f"tgt_mask = {tgt_mask}")
         src_mask = create_causal_mask(CONTEXT_LEN, CONTEXT_LEN + 1)
-        logger.debug(f"src_mask = {src_mask}")
 
         tgt_mask_torch = torch.from_numpy(np.array(tgt_mask))
         src_mask_torch = torch.from_numpy(np.array(src_mask))
@@ -255,8 +259,6 @@ def test_transformer_decoder(use_mask):
 
 @pytest.mark.parametrize("use_mask", [False, True])
 def test_transformer(use_mask):
-    # TODO: add test with causal masks
-
     batch_size = 2
     emb_size = 4
     dropout = 0.0
@@ -266,6 +268,22 @@ def test_transformer(use_mask):
     d_ff = 4
 
     target_len = CONTEXT_LEN + 1
+
+    src_mask = None
+    tgt_mask = None
+    memory_mask = None
+
+    torch_src_mask = None
+    torch_tgt_mask = None
+    torch_memory_mask = None
+    if use_mask:
+        src_mask = create_causal_mask(CONTEXT_LEN, CONTEXT_LEN)
+        tgt_mask = create_causal_mask(target_len, target_len)
+        memory_mask = create_causal_mask(target_len, CONTEXT_LEN)
+
+        torch_src_mask = torch.from_numpy(np.array(src_mask))
+        torch_tgt_mask = torch.from_numpy(np.array(tgt_mask))
+        torch_memory_mask = torch.from_numpy(np.array(memory_mask))
 
     src = torch.randn(CONTEXT_LEN, batch_size, emb_size, requires_grad=False)
     tgt = torch.randn(target_len, batch_size, emb_size, requires_grad=False)
@@ -282,7 +300,13 @@ def test_transformer(use_mask):
     )
 
     with torch.no_grad():
-        y_torch = torch_transformer(src, tgt).detach().numpy()
+        y_torch = torch_transformer(
+            src, 
+            tgt,
+            src_mask=torch_src_mask,
+            tgt_mask=torch_tgt_mask,
+            memory_mask=torch_memory_mask,
+        ).detach().numpy()
 
     # Jax
     src_jnp = jnp.array(src.detach().numpy())
@@ -298,7 +322,16 @@ def test_transformer(use_mask):
 
     state = to_jax_state(torch_transformer)
 
-    y_jax = jax_transformer(state, src_jnp, tgt_jnp, jax.random.PRNGKey(0))
+    y_jax = jax_transformer(
+        state,
+        src_jnp,
+        tgt_jnp,
+        jax.random.PRNGKey(0),
+        src_mask=src_mask,
+        tgt_mask=tgt_mask,
+        memory_mask=memory_mask,
+        )
+
     logger.debug(f"y_jax.shape = {y_jax.shape}")
     logger.debug(f"y_jax: {y_jax}")
 

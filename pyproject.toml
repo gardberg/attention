@@ -25,6 +25,9 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
+filterwarnings = [
+    "ignore::UserWarning",
+]
 minversion = "6.0"
 testpaths = [
     "src/tests",
