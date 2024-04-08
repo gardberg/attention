@@ -48,7 +48,7 @@ def test_transformer_decoder_init():
     state = decoder.init_state(jax.random.PRNGKey(0))
     out = decoder(state, x, x, jax.random.PRNGKey(0))
 
-    
+
 def test_transformer_init():
     x = jnp.ones((CONTEXT_LEN, 2, 2))
 
@@ -90,7 +90,9 @@ def test_transformer_encoder_layer(use_mask):
     encoder_layer = EncoderLayer(emb_size, n_heads, d_ff, dropout)
 
     encoder_state = to_jax_state(torch_encoder_layer)
-    y = encoder_layer(encoder_state, x_jnp, src_mask=jax_mask, rng=jax.random.PRNGKey(0))
+    y = encoder_layer(
+        encoder_state, x_jnp, src_mask=jax_mask, rng=jax.random.PRNGKey(0)
+    )
 
     logger.debug(f"y_jax.shape = {y.shape}")
     logger.debug(f"y_torch.shape = {y_torch.shape}")
@@ -123,7 +125,9 @@ def test_transformer_encoder(use_mask):
         emb_size, n_heads, dim_feedforward=d_ff, dropout=dropout, norm_first=True
     )
     torch_norm = torch.nn.LayerNorm(emb_size)
-    torch_encoder = torch.nn.TransformerEncoder(torch_encoder_layer, N_LAYERS, norm=torch_norm)
+    torch_encoder = torch.nn.TransformerEncoder(
+        torch_encoder_layer, N_LAYERS, norm=torch_norm
+    )
 
     with torch.no_grad():
         y_torch = torch_encoder(x, mask=torch_mask).detach().numpy()
@@ -300,13 +304,17 @@ def test_transformer(use_mask):
     )
 
     with torch.no_grad():
-        y_torch = torch_transformer(
-            src, 
-            tgt,
-            src_mask=torch_src_mask,
-            tgt_mask=torch_tgt_mask,
-            memory_mask=torch_memory_mask,
-        ).detach().numpy()
+        y_torch = (
+            torch_transformer(
+                src,
+                tgt,
+                src_mask=torch_src_mask,
+                tgt_mask=torch_tgt_mask,
+                memory_mask=torch_memory_mask,
+            )
+            .detach()
+            .numpy()
+        )
 
     # Jax
     src_jnp = jnp.array(src.detach().numpy())
@@ -330,7 +338,7 @@ def test_transformer(use_mask):
         src_mask=src_mask,
         tgt_mask=tgt_mask,
         memory_mask=memory_mask,
-        )
+    )
 
     logger.debug(f"y_jax.shape = {y_jax.shape}")
     logger.debug(f"y_jax: {y_jax}")

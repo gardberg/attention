@@ -187,6 +187,7 @@ class Embedding:
         # indices.shape:            (*,), e.g. (context_len, batch_size)
         # output.shape:             (*, emb_size)
         # state.embeddings.shape:   (vocab_size, emb_size)
+        assert jnp.max(indices) < self.n_embeddings, f"Index out of bounds"
         return jnp.take(state.embeddings, indices, axis=0)
 
     def init_state(self, rng: Array) -> EmbeddingState:
@@ -365,7 +366,7 @@ class MultiHeadAttention:
             assert (
                 mask.shape[:2] == scores.shape[:2]
             ), f"Mask shape {mask.shape[:2]} must match scores shape {scores.shape[:2]}. To create a causal mask, use create_causal_mask()"
-            logger.debug(f"mask: {mask}")
+            # logger.debug(f"mask: {mask}")
             mask = self._get_mask_batched(mask, batch_size, self.n_heads)
 
             # replace values in scores with float('-inf') where mask is True
@@ -430,7 +431,9 @@ class PositionalEncoding:
 
     def __call__(self, x: Array, rng: Array, training: bool = True) -> Array:
         # x.shape: (context_len, batch_size, embed_dim)
-        assert len(x.shape) == 3
+        assert (
+            len(x.shape) == 3
+        ), f"Expected input shape (context_len, batch_size, embed_dim), got {x.shape}"
         x = x + self.embeds[: x.shape[0]]
         return dropout(x, self.dropout, rng, training)
 

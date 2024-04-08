@@ -83,8 +83,8 @@ class TransformerState(NamedTuple):
 
 class Seq2SeqTransformerState(NamedTuple):
     transformer: TransformerState
-    embed_src: EmbeddingState
-    embed_tgt: EmbeddingState
+    src_embedding: EmbeddingState
+    tgt_embedding: EmbeddingState
     project_out: LinearState
 
 

@@ -211,7 +211,7 @@ class Decoder:
 class Transformer:
     """
     Norm-first Encoder-decoder Transformer
-    input: (tgt_len, batch_size, emb_size) -> 
+    input: (tgt_len, batch_size, emb_size) ->
     output: (tgt_len, batch_size, emb_size)
 
     Assumes inputs are positionally encoded embeddings
@@ -263,7 +263,7 @@ class Transformer:
         return self.decoder(
             state.decoder, tgt, memory, rng2, tgt_mask, memory_mask, training
         )
- 
+
     def init_state(self, rng: Array) -> TransformerState:
         rngs = jax.random.split(rng, 3)
         return TransformerState(
@@ -273,53 +273,144 @@ class Transformer:
 
 
 class Seq2SeqTransformer:
-    
-    def __init__(self, vocab_size: int, emb_size: int, **kwargs):
+    """
+    Sequence to Sequence Transformer model, e.g. for machine translation
+    https://pytorch.org/tutorials/beginner/translation_transformer.html
+    """
+
+    def __init__(
+        self, src_vocab_size: int, emb_size: int, tgt_vocab_size: int = None, **kwargs
+    ):
+        if tgt_vocab_size is None:
+            tgt_vocab_size = src_vocab_size
+
         self.emb_size = emb_size
         self.transformer = Transformer(emb_size=emb_size, **kwargs)
-        # Assume same vocab for input and output sequence
-        self.embed_src = Embedding(vocab_size, emb_size)
-        self.embed_tgt = Embedding(vocab_size, emb_size)
-        self.project_out = Linear(emb_size, vocab_size)
+
+        # Different vocabs for src and tgt, e.g. different languages
+        self.src_embedding = Embedding(src_vocab_size, emb_size)
+        self.tgt_embedding = Embedding(tgt_vocab_size, emb_size)
+        self.project_out = Linear(emb_size, tgt_vocab_size)
         self.encode_position = PositionalEncoding(emb_size)
+
+        # TODO
+        self.start_token = 0
+        self.stop_token = 1
+
+    def embed_src(self, state: EmbeddingState, src: Array, rng: Array) -> Array:
+        src_emb = self.src_embedding(state, src) * jnp.sqrt(self.emb_size)
+        return self.encode_position(src_emb, rng)
+
+    def embed_tgt(self, state: EmbeddingState, tgt: Array, rng: Array) -> Array:
+        tgt_emb = self.tgt_embedding(state, tgt) * jnp.sqrt(self.emb_size)
+        return self.encode_position(tgt_emb, rng)
 
     def __call__(
         self,
         state: Seq2SeqTransformerState,
-        src: Array,
-        tgt: Array,
+        src_toks: Array,
+        tgt_toks: Array,
         rng: Array,
         src_mask: Array = None,
         tgt_mask: Array = None,
         memory_mask: Array = None,
         training: bool = True,
     ) -> Array:
-        # src.shape: (src_len, batch_size)
-        # tgt.shape: (tgt_len, batch_size)
-        # returns: (seq_len, batch_size, vocab_size) of unnormalized token probabilities
+        # src_toks.shape: (src_len, batch_size)
+        # tgt_toks.shape: (tgt_len, batch_size)
+        # returns: (seq_len, batch_size, tgt_vocab_size) of unnormalized token probabilities
 
-        rngs = jax.random.split(rng, 3)
+        rngs = jax.random.split(rng, 4)
 
-        src_emb = self.embed_src(state.embed_src, src) * jnp.sqrt(self.emb_size)
-        src_emb = self.encode_position(src_emb, rngs[0])
+        src_emb = self.embed_src(state.src_embedding, src_toks, rngs[0])
+        tgt_emb = self.embed_tgt(state.tgt_embedding, tgt_toks, rngs[1])
 
-        tgt_emb = self.embed_tgt(state.embed_tgt, tgt) * jnp.sqrt(self.emb_size)
-        tgt_emb = self.encode_position(tgt_emb, rngs[1])
-
-        outputs = self.transformer(
-            state.transformer, src_emb, tgt_emb, rngs[2], src_mask, tgt_mask, memory_mask, training
+        memory = self.transformer.encoder(
+            state.transformer.encoder, src_emb, rngs[2], src_mask, training
         )
+
+        outputs = self.transformer.decoder(
+            state.transformer.decoder,
+            tgt_emb,
+            memory,
+            rngs[3],
+            tgt_mask,
+            memory_mask,
+            training,
+        )
+
         return self.project_out(state.project_out, outputs)
 
     def init_state(self, rng: Array) -> Seq2SeqTransformerState:
         rngs = jax.random.split(rng, 4)
         return Seq2SeqTransformerState(
             transformer=self.transformer.init_state(rngs[0]),
-            embed_src=self.embed_src.init_state(rngs[1]),
-            embed_tgt=self.embed_tgt.init_state(rngs[2]),
+            src_embedding=self.src_embedding.init_state(rngs[1]),
+            tgt_embedding=self.tgt_embedding.init_state(rngs[2]),
             project_out=self.project_out.init_state(rngs[3]),
         )
 
-    def predict(self, state: Seq2SeqTransformerState, src: Array, tgt: Array, rng: Array):
-        # TODO: full greedy decoding using Tokenizer 
-        pass
+    def generate(
+        self,
+        state: Seq2SeqTransformerState,
+        src_toks: Array,
+        rng: Array,
+        src_mask: Array = None,
+        max_len: int = 10,
+    ):
+        # Start generation based on start token and info from encoder
+        # src_toks.shape (src_len, 1) since batch_size = 1
+        # output: array of predicted tokens of shape (*, 1) (however long the model decides to generate)
+        # src_mask.shape (src_len, src_len)
+        # memory_mask.shape (tgt_len, src_len)
+
+        # TODO: Split RNGs
+
+        src = self.embed_src(state.src_embedding, src_toks, rng)
+        print(f"src.shape: {src.shape}")
+        print(src)
+
+        memory = self.transformer.encoder(
+            state.transformer.encoder, src, rng, src_mask, training=False
+        )
+        print(f"memory.shape: {memory.shape}")
+        print(memory)
+
+        predicted = jnp.array([self.start_token]).reshape(1, 1)
+        for i in range(max_len):
+            # Causal mask on previously generated tokens
+            tgt_mask = create_causal_mask(predicted.shape[0])
+            # (tgt_len, 1, emb_size)
+            tgt = self.embed_tgt(state.tgt_embedding, predicted, rng)
+
+            out = self.transformer.decoder(
+                state.transformer.decoder,
+                tgt,
+                memory,
+                rng,
+                tgt_mask,
+                memory_mask=None,
+                training=False,
+            )
+            # (1, 1, emb_size)
+            print(f"out.shape: {out.shape}")
+            print(out)
+
+            # Why are we only using the last part of the ouput here for selecting the next token?
+            # should be (1, 1, tgt_vocab_size)?
+            logits = self.project_out(state.project_out, out)
+            print(f"logits.shape: {logits.shape}")
+            print(logits)
+
+            # TODO: Double check dims here
+            # Greedy decode
+            pred_token = jnp.argmax(logits[-1], axis=-1).reshape(1, 1)
+            print(f"pred_token.shape: {pred_token.shape}")
+            print()
+
+            predicted = jnp.concatenate([predicted, pred_token], axis=0)
+
+            if pred_token == self.stop_token:
+                break
+
+        return predicted

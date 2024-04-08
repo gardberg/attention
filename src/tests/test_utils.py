@@ -21,7 +21,7 @@ def test_cl100k_batch():
     enc = [[9906, 11, 1917, 0], [15571, 29474, 11, 1917, 0]]
 
     tokenizer = Tokenizer(name="cl100k_base")
-    
+
     logger.debug(f"enc: {enc}")
     batch_enc = tokenizer.encode_batch(texts)
     logger.debug(f"batch_enc: {batch_enc}")

@@ -22,10 +22,10 @@ class Tokenizer:
 
     def encode(self, text: str) -> list[int]:
         return self.encoding.encode(text)
-    
+
     def encode_batch(self, texts: list[str]) -> list[list[int]]:
         return self.encoding.encode_batch(texts)
-        
+
     def decode(self, tokens: list[int]) -> str:
         return self.encoding.decode(tokens)
 
