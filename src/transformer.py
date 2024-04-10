@@ -86,6 +86,7 @@ class Encoder:
         src:        Source input sequence (src_len, batch_size, emb_size)
         rng:        Jax random key
         src_mask:   Mask for the input sequence (src_len, src_len)
+        output:     (src_len, batch_size, emb_size)
         """
         for layer, layer_state in zip(self.layers, state.layers):
             src = layer(layer_state, src, rng, src_mask, training)
@@ -350,6 +351,7 @@ class Seq2SeqTransformer:
             project_out=self.project_out.init_state(rngs[3]),
         )
 
+
     def generate(
         self,
         state: Seq2SeqTransformerState,
@@ -366,23 +368,27 @@ class Seq2SeqTransformer:
 
         # TODO: Split RNGs
 
-        src = self.embed_src(state.src_embedding, src_toks, rng)
-        print(f"src.shape: {src.shape}")
-        print(src)
+        assert src_toks.shape[1] == 1, "Only batch_size = 1 supported for generation"
 
+        # src.shape: (src_len, 1, emb_size)
+        src = self.embed_src(state.src_embedding, src_toks, rng)
+
+        # memory.shape: (src_len, 1, emb_size)
         memory = self.transformer.encoder(
             state.transformer.encoder, src, rng, src_mask, training=False
         )
-        print(f"memory.shape: {memory.shape}")
-        print(memory)
 
         predicted = jnp.array([self.start_token]).reshape(1, 1)
         for i in range(max_len):
             # Causal mask on previously generated tokens
             tgt_mask = create_causal_mask(predicted.shape[0])
+
+            # tgt_len increases with 1 each iteration, 
+            # as the predicted token is fed back into the model
             # (tgt_len, 1, emb_size)
             tgt = self.embed_tgt(state.tgt_embedding, predicted, rng)
 
+            # (tgt_len, 1, emb_size)
             out = self.transformer.decoder(
                 state.transformer.decoder,
                 tgt,
@@ -392,25 +398,18 @@ class Seq2SeqTransformer:
                 memory_mask=None,
                 training=False,
             )
-            # (1, 1, emb_size)
-            print(f"out.shape: {out.shape}")
-            print(out)
 
-            # Why are we only using the last part of the ouput here for selecting the next token?
-            # should be (1, 1, tgt_vocab_size)?
+            # (tgt_len, 1, tgt_vocab_size)
             logits = self.project_out(state.project_out, out)
-            print(f"logits.shape: {logits.shape}")
-            print(logits)
 
-            # TODO: Double check dims here
             # Greedy decode
+            # (1, 1)
             pred_token = jnp.argmax(logits[-1], axis=-1).reshape(1, 1)
-            print(f"pred_token.shape: {pred_token.shape}")
-            print()
 
             predicted = jnp.concatenate([predicted, pred_token], axis=0)
 
             if pred_token == self.stop_token:
                 break
 
+        # (*, 1)
         return predicted
