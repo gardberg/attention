@@ -7,34 +7,22 @@ from typing import Union
 from attention import NamedTupleSubclass
 from log_utils import logger
 
-os.environ["TIKTOKEN_CACHE_DIR"] = "../.cache"
-import tiktoken
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+os.environ["TIKTOKEN_CACHE_DIR"] = os.path.join(ROOT_DIR, ".cache")
+
+from tiktoken import get_encoding, Encoding
 
 
-class Tokenizer:
-    # Wrapper class for tiktoken tokenizer
-
-    def __init__(self, name="cl100k_base"):
-        try:
-            self.encoding = tiktoken.get_encoding(name)
-        except:
-            raise Exception(f"Could not download or find tiktoken tokenizer: '{name}'")
-
-    def encode(self, text: str) -> list[int]:
-        return self.encoding.encode(text)
-
-    def encode_batch(self, texts: list[str]) -> list[list[int]]:
-        return self.encoding.encode_batch(texts)
-
-    def decode(self, tokens: list[int]) -> str:
-        return self.encoding.decode(tokens)
-
-    def decode_batch(self, tokens: list[list[int]]) -> list[str]:
-        return self.encoding.decode_batch(tokens)
+def get_tokenizer(name: str) -> Encoding:
+    return get_encoding(name)
 
 
+# TODO: Ugly at the moment
 def state_to_str(state: Union[NamedTupleSubclass, Array, bool], indent=0):
     # state is a NamedTuple which contains several other NamedTuples, Arrays, or bools
+
+    if isinstance(state, list):
+        return "[\n" + ", ".join([state_to_str(s, indent) for s in state]) + "\n]"
 
     if state is None:
         return "None"
@@ -47,7 +35,7 @@ def state_to_str(state: Union[NamedTupleSubclass, Array, bool], indent=0):
 
     result = [f"{state.__class__.__name__}:"] if state else []
     for name, value in state._asdict().items():
-        field_str = f"\t{name}: " if indent > 0 else f"{name}: "
-        result.append(f"\t{field_str}{state_to_str(value, indent + 1)}")
+        field_str = f"  {name}: " if indent > 0 else f"{name}: "
+        result.append(f"  {field_str}{state_to_str(value, indent + 1)}")
 
     return "\n".join(result)

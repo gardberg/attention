@@ -294,10 +294,6 @@ class Seq2SeqTransformer:
         self.project_out = Linear(emb_size, tgt_vocab_size)
         self.encode_position = PositionalEncoding(emb_size)
 
-        # TODO
-        self.start_token = 0
-        self.stop_token = 1
-
     def embed_src(self, state: EmbeddingState, src: Array, rng: Array) -> Array:
         src_emb = self.src_embedding(state, src) * jnp.sqrt(self.emb_size)
         return self.encode_position(src_emb, rng)
@@ -351,7 +347,6 @@ class Seq2SeqTransformer:
             project_out=self.project_out.init_state(rngs[3]),
         )
 
-
     def generate(
         self,
         state: Seq2SeqTransformerState,
@@ -359,41 +354,48 @@ class Seq2SeqTransformer:
         rng: Array,
         src_mask: Array = None,
         max_len: int = 10,
+        stop_token: int = 100257,  # cl100k_base default
+        start_token: int = 0,
     ):
         # Start generation based on start token and info from encoder
+
         # src_toks.shape (src_len, 1) since batch_size = 1
         # output: array of predicted tokens of shape (*, 1) (however long the model decides to generate)
         # src_mask.shape (src_len, src_len)
         # memory_mask.shape (tgt_len, src_len)
 
         # TODO: Split RNGs
+        rngs = jax.random.split(rng, 4)
 
+        if src_toks.ndim == 1:
+            src_toks = src_toks.reshape(-1, 1)
         assert src_toks.shape[1] == 1, "Only batch_size = 1 supported for generation"
 
         # src.shape: (src_len, 1, emb_size)
-        src = self.embed_src(state.src_embedding, src_toks, rng)
+        src = self.embed_src(state.src_embedding, src_toks, rngs[0])
 
         # memory.shape: (src_len, 1, emb_size)
         memory = self.transformer.encoder(
-            state.transformer.encoder, src, rng, src_mask, training=False
+            state.transformer.encoder, src, rngs[1], src_mask, training=False
         )
 
-        predicted = jnp.array([self.start_token]).reshape(1, 1)
+        # TODO: Do we need to start with the start token here?
+        predicted = jnp.array([start_token]).reshape(1, 1)
         for i in range(max_len):
             # Causal mask on previously generated tokens
             tgt_mask = create_causal_mask(predicted.shape[0])
 
-            # tgt_len increases with 1 each iteration, 
+            # tgt_len increases with 1 each iteration,
             # as the predicted token is fed back into the model
             # (tgt_len, 1, emb_size)
-            tgt = self.embed_tgt(state.tgt_embedding, predicted, rng)
+            tgt = self.embed_tgt(state.tgt_embedding, predicted, rngs[2])
 
             # (tgt_len, 1, emb_size)
             out = self.transformer.decoder(
                 state.transformer.decoder,
                 tgt,
                 memory,
-                rng,
+                rngs[3],
                 tgt_mask,
                 memory_mask=None,
                 training=False,
@@ -408,7 +410,7 @@ class Seq2SeqTransformer:
 
             predicted = jnp.concatenate([predicted, pred_token], axis=0)
 
-            if pred_token == self.stop_token:
+            if pred_token == stop_token:
                 break
 
         # (*, 1)

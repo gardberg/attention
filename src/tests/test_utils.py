@@ -1,4 +1,4 @@
-from utils import *
+from utils import get_tokenizer
 import pytest
 import jax.numpy as jnp
 from testing_utils import TOL
@@ -7,7 +7,7 @@ from log_utils import logger
 
 @pytest.mark.parametrize(("text", "enc"), [("Hello, world!", [9906, 11, 1917, 0])])
 def test_cl100k_base(text, enc):
-    tokenizer = Tokenizer(name="cl100k_base")
+    tokenizer = get_tokenizer(name="cl100k_base")
     enc = jnp.array(enc)
 
     # jax arrays
@@ -20,7 +20,7 @@ def test_cl100k_batch():
     texts = ["Hello, world!", "Goodbye, world!"]
     enc = [[9906, 11, 1917, 0], [15571, 29474, 11, 1917, 0]]
 
-    tokenizer = Tokenizer(name="cl100k_base")
+    tokenizer = get_tokenizer(name="cl100k_base")
 
     logger.debug(f"enc: {enc}")
     batch_enc = tokenizer.encode_batch(texts)
