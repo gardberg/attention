@@ -9,6 +9,7 @@ from log_utils import logger
 from attention import *
 from act import *
 from states import to_jax_state
+from utils import count_params, torch_count_params
 
 
 np.random.seed(1337)
@@ -23,12 +24,18 @@ def test_dense(n_in: int, n_out: int):
 
     torch_linear = torch.nn.Linear(n_in, n_out)
 
+    torch_params = torch_count_params(torch_linear)
+
     with torch.no_grad():
         y_torch = torch_linear(x_in).numpy()
 
     # Jax
     dense = Linear(n_in, n_out)
     state = to_jax_state(torch_linear)
+
+    jax_params = count_params(state)
+    assert torch_params == jax_params, f"Got different number of parameters: {torch_params} vs {jax_params}"
+
     y_jax = dense(state, jnp.array(x_in))
 
     logger.debug(f"Diff: {np.linalg.norm(y_torch - y_jax):.2e}")

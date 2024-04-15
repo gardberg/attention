@@ -1,8 +1,12 @@
-from utils import get_tokenizer
+from utils import get_tokenizer, count_params, state_to_str
 import pytest
 import jax.numpy as jnp
 from testing_utils import TOL
 from log_utils import logger
+from states import EmbeddingState
+from transformer import Transformer
+import jax
+from torch.nn import Transformer as TorchTransformer
 
 
 @pytest.mark.parametrize(("text", "enc"), [("Hello, world!", [9906, 11, 1917, 0])])
@@ -34,3 +38,55 @@ def test_cl100k_batch():
 
     for t, pred in zip(texts, texts_pred):
         assert t == pred
+
+def test_count_emb():
+    state = EmbeddingState(embeddings=jnp.zeros((10, 10)))
+    
+    nbr_params = count_params(state)
+    logger.debug(f"nbr_params: {nbr_params}, expected: 100")
+
+    assert nbr_params == 100
+
+
+@pytest.mark.skip(reason="Not working")
+def test_count_transformer():
+    
+    # Torch
+    emb_size = 1
+    n_heads = 1
+    n_layers = 1
+    d_ff = 1
+    dropout = 0
+
+    torch_transformer = TorchTransformer(
+        d_model=emb_size,
+        nhead=n_heads,
+        num_encoder_layers=n_layers,
+        num_decoder_layers=n_layers,
+        dim_feedforward=d_ff,
+        norm_first=True,
+        dropout=dropout,
+    )
+
+    # Count learnable parameters
+    s = 0
+   
+    for name, p in torch_transformer.named_parameters():
+        print(name, p.numel())
+        s += p.numel()
+    print(s)
+
+    # Jax
+    rng = jax.random.PRNGKey(0)
+    model = Transformer(
+        emb_size=emb_size,
+        n_heads=n_heads,
+        n_layers=n_layers,
+        d_ff=d_ff,
+        dropout=dropout,
+    )
+
+    model_state = model.init_state(rng)
+
+    print(count_params(model_state))
+    print(state_to_str(model_state))
