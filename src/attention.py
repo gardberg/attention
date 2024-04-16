@@ -14,7 +14,7 @@ class BatchNorm1d:
         self.dims = dims
 
     def forward(
-        self, state: BatchNormState, x: Array, training: bool = True, eps: float=1e-5
+        self, state: BatchNormState, x: Array, training: bool = True, eps: float = 1e-5
     ) -> tuple[Array, BatchNormState]:
         """
         :param Array x: (B, N) or (B, N, L), B batch size, N input dim, L input length
@@ -49,19 +49,18 @@ class BatchNorm1d:
         return state.gamma * x_norm + state.beta, new_state
 
     def __call__(
-        self, state: BatchNormState, x: Array, training: bool=True, eps: float=1e-5
+        self, state: BatchNormState, x: Array, training: bool = True, eps: float = 1e-5
     ) -> tuple[Array, BatchNormState]:
         return self.forward(state, x, training, eps)
 
-    def init_state(self, rng: Array=None) -> BatchNormState:
+    def init_state(self, rng: Array = None) -> BatchNormState:
         return BatchNormState(
             mean=jnp.array(0),
             var=jnp.array(1),
-            gamma=jnp.ones(self.dims), # weight
-            beta=jnp.zeros(self.dims), # bias
+            gamma=jnp.ones(self.dims),  # weight
+            beta=jnp.zeros(self.dims),  # bias
             momentum=jnp.array(0.1),
         )
-
 
 
 # (context_len, batch_size, emb_dim)

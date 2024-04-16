@@ -60,7 +60,7 @@ def count_params(state) -> int:
 
 
 # For torch we count all params that require grad. Some, in e.g. batchnorm, are not learnabe,
-# but are instead updated via a rule. These are counted in 'count_params' above, so 
+# but are instead updated via a rule. These are counted in 'count_params' above, so
 # there will be a difference
 def torch_count_params(model: nn.Module, print_names: bool = False) -> int:
     s = sum(p.numel() for p in model.parameters() if p.requires_grad)

@@ -163,6 +163,7 @@ def test_batchnorm_1d_inference_small(B: int, N: int):
         torch_params + 3 == jax_params
     ), f"Got different number of parameters: {torch_params} vs {jax_params}"
 
+
 @pytest.mark.parametrize("B, N, L", [(1, 2, 2), (2, 2, 2), (1, 1, 1)])
 @pytest.mark.paramtest
 def test_batchnorm_1d_inference(B: int, N: int, L: int):
@@ -184,7 +185,7 @@ def test_batchnorm_1d_inference(B: int, N: int, L: int):
 
     jax_params, torch_params = _count_params(state, torch_bn, debug=True)
     assert (
-        torch_params + 3== jax_params
+        torch_params + 3 == jax_params
     ), f"Got different number of parameters: {torch_params} vs {jax_params}"
 
 
@@ -212,6 +213,7 @@ def test_batchnorm_1d_train(B: int, N: int):
 
 
 @pytest.mark.parametrize("norm_dims", [(3,), (2, 3)])
+@pytest.mark.paramtest
 def test_layernorm(norm_dims: tuple):
     # assume input: (context_len, batch_size, emb_dim)
     x = torch.randn(4, 2, 3, requires_grad=False) * 10
@@ -228,6 +230,11 @@ def test_layernorm(norm_dims: tuple):
 
     logger.debug(f"Diff: {np.linalg.norm(y_torch - y_jax):.2e}")
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
+
+    jax_params, torch_params = _count_params(state, torch_ln, debug=True)
+    assert (
+        torch_params == jax_params
+    ), f"Got different number of parameters: {torch_params} vs {jax_params}"
 
 
 @pytest.mark.parametrize("size", [(4, 2, 16), (1, 1, 16), (16, 1, 512)])
@@ -248,6 +255,7 @@ def test_positional_encoding(size):
 
 
 @pytest.mark.parametrize("embed_dim", [1, 8])
+@pytest.mark.paramtest
 def test_rmsnorm(embed_dim):
     x = torch.randn(4, 2, embed_dim, requires_grad=False)
     eps = 1e-5
@@ -264,6 +272,11 @@ def test_rmsnorm(embed_dim):
 
     logger.debug(f"y_torch.shape = {y_torch.shape}, y_jax.shape = {y_jax.shape}")
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
+
+    jax_params, torch_params = _count_params(state, torch_rmsnorm, debug=True)
+    assert (
+        torch_params == jax_params
+    ), f"Got different number of parameters: {torch_params} vs {jax_params}"
 
 
 @pytest.mark.parametrize("shape", [(2, 2, 1, 4)])
@@ -286,6 +299,7 @@ def test_rope(shape: tuple):
 
 
 @pytest.mark.parametrize("shape", [(2,), (2, 2)])
+@pytest.mark.paramtest
 def test_learned_embeddings(shape: tuple):
     VOCAB_SIZE = 16
     EMB_DIM = 2
@@ -306,3 +320,8 @@ def test_learned_embeddings(shape: tuple):
     y_jax = jax_emb(embedding_state, jnp.array(indices))
 
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
+
+    jax_params, torch_params = _count_params(embedding_state, torch_emb, debug=True)
+    assert (
+        torch_params == jax_params
+    ), f"Got different number of parameters: {torch_params} vs {jax_params}"
