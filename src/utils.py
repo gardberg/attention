@@ -39,7 +39,10 @@ def state_to_str(state: Union[NamedTupleSubclass, Array, bool], indent=0):
     return "\n".join(result)
 
 
+# TODO: Atm counts all params. How do we count only learnable?
 def count_params(state) -> int:
+    if isinstance(state, int):
+        return 1
 
     if isinstance(state, Array):
         return state.size
@@ -55,8 +58,12 @@ def count_params(state) -> int:
 
     return sum([count_params(v) for v in state._asdict().values()])
 
-def torch_count_params(model: nn.Module, print_names: bool=False) -> int:
-    s = sum(p.numel() for p in model.parameters() if p.requires_grad) 
+
+# For torch we count all params that require grad. Some, in e.g. batchnorm, are not learnabe,
+# but are instead updated via a rule. These are counted in 'count_params' above, so 
+# there will be a difference
+def torch_count_params(model: nn.Module, print_names: bool = False) -> int:
+    s = sum(p.numel() for p in model.parameters() if p.requires_grad)
     if print_names:
         for name, p in model.named_parameters():
             print(name, p.numel())

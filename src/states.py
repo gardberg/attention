@@ -6,13 +6,13 @@ import jax.numpy as jnp
 from torch import nn
 
 
+# Contains 3 more than torch
 class BatchNormState(NamedTuple):
-    # TODO: make into nested dict?
-    mean: Array = 0
-    var: Array = 1
-    gamma: Array = 1
-    beta: Array = 0
-    momentum: Array = 0.1
+    mean: Array
+    var: Array
+    gamma: Array
+    beta: Array
+    momentum: Array
 
 
 # Layer norm does not keep a running mean

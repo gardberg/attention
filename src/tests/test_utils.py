@@ -39,9 +39,10 @@ def test_cl100k_batch():
     for t, pred in zip(texts, texts_pred):
         assert t == pred
 
+
 def test_count_emb():
     state = EmbeddingState(embeddings=jnp.zeros((10, 10)))
-    
+
     nbr_params = count_params(state)
     logger.debug(f"nbr_params: {nbr_params}, expected: 100")
 
@@ -50,7 +51,6 @@ def test_count_emb():
 
 @pytest.mark.skip(reason="Not working")
 def test_count_transformer():
-    
     # Torch
     emb_size = 1
     n_heads = 1
@@ -70,7 +70,7 @@ def test_count_transformer():
 
     # Count learnable parameters
     s = 0
-   
+
     for name, p in torch_transformer.named_parameters():
         print(name, p.numel())
         s += p.numel()

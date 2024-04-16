@@ -8,40 +8,60 @@ from states import *
 from functools import lru_cache
 
 
-def batchnorm_1d(
-    x: Array, state: BatchNormState, training: bool = True, eps=1e-5
-) -> tuple[Array, BatchNormState]:
-    """
-    :param Array x: (B, N) or (B, N, L), B batch size, N input dim, L input length
-    :param BatchNormState state: NamedTuple with mean, var, gamma, beta
-    """
-    # https://pytorch.org/docs/stable/generated/torch.nn.BatchNorm1d.html#torch.nn.BatchNorm1d
+class BatchNorm1d:
+    def __init__(self, dims: int):
+        # dims: N, input dims aka number of input features
+        self.dims = dims
 
-    if training:
-        # Only update running mean and var during training
-        mean = jnp.mean(x, axis=0)
-        var = jnp.var(x, axis=0)  # ddof = 0, biased
+    def forward(
+        self, state: BatchNormState, x: Array, training: bool = True, eps: float=1e-5
+    ) -> tuple[Array, BatchNormState]:
+        """
+        :param Array x: (B, N) or (B, N, L), B batch size, N input dim, L input length
+        :param BatchNormState state: NamedTuple with mean, var, gamma, beta
+        """
+        # https://pytorch.org/docs/stable/generated/torch.nn.BatchNorm1d.html#torch.nn.BatchNorm1d
 
-        # update state.mean and state.var via jax.tree_map instead
-        new_mean = (1 - state.momentum) * state.mean + state.momentum * mean
-        new_var = (1 - state.momentum) * state.var + state.momentum * jnp.var(
-            x, axis=0, ddof=1
+        if training:
+            # Only update running mean and var during training
+            mean = jnp.mean(x, axis=0)
+            var = jnp.var(x, axis=0)  # ddof = 0, biased
+
+            # update state.mean and state.var via jax.tree_map instead
+            new_mean = (1 - state.momentum) * state.mean + state.momentum * mean
+            new_var = (1 - state.momentum) * state.var + state.momentum * jnp.var(
+                x, axis=0, ddof=1
+            )
+
+            x_norm = (x - mean) / jnp.sqrt(var + eps)
+        else:
+            x_norm = (x - state.mean) / jnp.sqrt(state.var + eps)
+
+        # TODO: Update state with jax.tree_map instead?
+        new_state = BatchNormState(
+            mean=new_mean if training else state.mean,
+            var=new_var if training else state.var,
+            gamma=state.gamma,
+            beta=state.beta,
+            momentum=state.momentum,
         )
 
-        x_norm = (x - mean) / jnp.sqrt(var + eps)
-    else:
-        x_norm = (x - state.mean) / jnp.sqrt(state.var + eps)
+        return state.gamma * x_norm + state.beta, new_state
 
-    # TODO: Update state with jax.tree_map instead?
-    new_state = BatchNormState(
-        mean=new_mean if training else state.mean,
-        var=new_var if training else state.var,
-        gamma=state.gamma,
-        beta=state.beta,
-        momentum=state.momentum,
-    )
+    def __call__(
+        self, state: BatchNormState, x: Array, training: bool=True, eps: float=1e-5
+    ) -> tuple[Array, BatchNormState]:
+        return self.forward(state, x, training, eps)
 
-    return state.gamma * x_norm + state.beta, new_state
+    def init_state(self, rng: Array=None) -> BatchNormState:
+        return BatchNormState(
+            mean=jnp.array(0),
+            var=jnp.array(1),
+            gamma=jnp.ones(self.dims), # weight
+            beta=jnp.zeros(self.dims), # bias
+            momentum=jnp.array(0.1),
+        )
+
 
 
 # (context_len, batch_size, emb_dim)

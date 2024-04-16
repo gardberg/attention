@@ -17,14 +17,26 @@ rng = jax.random.PRNGKey(0)
 torch.manual_seed(1337)
 
 
+def _count_params(
+    jax_state: NamedTuple, torch_model: torch.nn.Module, debug=False
+) -> tuple:
+    jax_params = count_params(jax_state)
+    if debug:
+        logger.debug(f"jax_params: {jax_params}")
+    torch_params = torch_count_params(torch_model)
+    if debug:
+        logger.debug(f"torch_params: {torch_params}")
+    return jax_params, torch_params
+
+
 # Compare pytorch linear network to custom implementation
 @pytest.mark.parametrize("n_in, n_out", [(1, 1), (4, 1), (1, 4), (4, 4)])
+# run with pytest -m paramtest
+@pytest.mark.paramtest
 def test_dense(n_in: int, n_out: int):
     x_in = torch.randn(n_in)
 
     torch_linear = torch.nn.Linear(n_in, n_out)
-
-    torch_params = torch_count_params(torch_linear)
 
     with torch.no_grad():
         y_torch = torch_linear(x_in).numpy()
@@ -33,16 +45,20 @@ def test_dense(n_in: int, n_out: int):
     dense = Linear(n_in, n_out)
     state = to_jax_state(torch_linear)
 
-    jax_params = count_params(state)
-    assert torch_params == jax_params, f"Got different number of parameters: {torch_params} vs {jax_params}"
-
     y_jax = dense(state, jnp.array(x_in))
 
     logger.debug(f"Diff: {np.linalg.norm(y_torch - y_jax):.2e}")
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
 
+    # Count params
+    jax_params, torch_params = _count_params(state, torch_linear, debug=True)
+    assert (
+        torch_params == jax_params
+    ), f"Got different number of parameters: {torch_params} vs {jax_params}"
+
 
 @pytest.mark.parametrize("n_in, n_out, batch_size", [(1, 1, 1), (4, 4, 4)])
+@pytest.mark.paramtest
 def test_dense_batch(n_in, n_out, batch_size):
     x_in = torch.randn(batch_size, n_in)
     logger.debug(f"x_in: {x_in.shape}")
@@ -61,8 +77,15 @@ def test_dense_batch(n_in, n_out, batch_size):
     logger.debug(f"Diff: {np.linalg.norm(y_torch - y_jax):.2e}")
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
 
+    # Count params
+    jax_params, torch_params = _count_params(state, torch_linear, debug=True)
+    assert (
+        torch_params == jax_params
+    ), f"Got different number of parameters: {torch_params} vs {jax_params}"
+
 
 @pytest.mark.parametrize("n_in, n_out, batch_size", [(1, 1, 1), (4, 4, 4)])
+@pytest.mark.paramtest
 def test_dense_batch_no_bias(n_in, n_out, batch_size):
     x_in = torch.randn(batch_size, n_in)
     logger.debug(f"x_in: {x_in.shape}")
@@ -81,7 +104,14 @@ def test_dense_batch_no_bias(n_in, n_out, batch_size):
     logger.debug(f"Diff: {np.linalg.norm(y_torch - y_jax):.2e}")
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
 
+    # Count params
+    jax_params, torch_params = _count_params(state, torch_linear, debug=True)
+    assert (
+        torch_params == jax_params
+    ), f"Got different number of parameters: {torch_params} vs {jax_params}"
 
+
+@pytest.mark.paramtest
 def test_dense_square():
     n_in = (4, 4)
     n_out = 1
@@ -101,8 +131,15 @@ def test_dense_square():
     logger.debug(f"Diff: {np.linalg.norm(y_torch - y_jax):.2e}")
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
 
+    # Count params
+    jax_params, torch_params = _count_params(state, torch_linear, debug=True)
+    assert (
+        torch_params == jax_params
+    ), f"Got different number of parameters: {torch_params} vs {jax_params}"
+
 
 @pytest.mark.parametrize("B, N", [(1, 2), (2, 1), (2, 3)])
+@pytest.mark.paramtest
 def test_batchnorm_1d_inference_small(B: int, N: int):
     x = torch.randn(B, N)
     torch_bn = torch.nn.BatchNorm1d(N)
@@ -112,14 +149,22 @@ def test_batchnorm_1d_inference_small(B: int, N: int):
         y_torch = torch_bn(x).numpy()
 
     # Jax
-    state = BatchNormState()
-    y, _state = batchnorm_1d(jnp.array(x), state, training=False)
+    jax_bn = BatchNorm1d(N)
+    state = jax_bn.init_state()
+
+    y, _ = jax_bn(state, jnp.array(x), training=False)
 
     logger.debug(f"Diff: {np.linalg.norm(y_torch - y):.2e}")
     assert np.allclose(y, y_torch, atol=TOL), f"y = {y}, y_torch = {y_torch}"
 
+    # Batchnorm has 3 more params than the count we get from torch
+    jax_params, torch_params = _count_params(state, torch_bn, debug=True)
+    assert (
+        torch_params + 3 == jax_params
+    ), f"Got different number of parameters: {torch_params} vs {jax_params}"
 
 @pytest.mark.parametrize("B, N, L", [(1, 2, 2), (2, 2, 2), (1, 1, 1)])
+@pytest.mark.paramtest
 def test_batchnorm_1d_inference(B: int, N: int, L: int):
     x = torch.randn(B, N, L)
     torch_bn = torch.nn.BatchNorm1d(N)
@@ -129,14 +174,22 @@ def test_batchnorm_1d_inference(B: int, N: int, L: int):
         y_torch = torch_bn(x).numpy()
 
     # Jax
-    state = BatchNormState()
-    y, _state = batchnorm_1d(jnp.array(x), state, training=False)
+    jax_bn = BatchNorm1d(N)
+    state = jax_bn.init_state()
+
+    y, _ = jax_bn(state, jnp.array(x), training=False)
 
     logger.debug(f"Diff: {np.linalg.norm(y_torch - y):.2e}")
     assert np.allclose(y, y_torch, atol=TOL), f"y = {y}, y_torch = {y_torch}"
 
+    jax_params, torch_params = _count_params(state, torch_bn, debug=True)
+    assert (
+        torch_params + 3== jax_params
+    ), f"Got different number of parameters: {torch_params} vs {jax_params}"
+
 
 @pytest.mark.parametrize("B, N", [(2, 2), (2, 1), (2, 3)])
+@pytest.mark.paramtest
 def test_batchnorm_1d_train(B: int, N: int):
     x = torch.randn(B, N)
     torch_bn = torch.nn.BatchNorm1d(N)
@@ -145,11 +198,17 @@ def test_batchnorm_1d_train(B: int, N: int):
         y_torch = torch_bn(x).numpy()
 
     # Jax
-    state = BatchNormState()
-    y, _state = batchnorm_1d(jnp.array(x), state, training=True)
+    jax_bn = BatchNorm1d(N)
+    state = jax_bn.init_state()
+    y, _ = jax_bn(state, jnp.array(x), training=True)
 
     logger.debug(f"Diff: {np.linalg.norm(y_torch - y):.2e}")
     assert np.allclose(y, y_torch, atol=TOL), f"y = {y}, y_torch = {y_torch}"
+
+    jax_params, torch_params = _count_params(state, torch_bn, debug=True)
+    assert (
+        torch_params + 3 == jax_params
+    ), f"Got different number of parameters: {torch_params} vs {jax_params}"
 
 
 @pytest.mark.parametrize("norm_dims", [(3,), (2, 3)])
