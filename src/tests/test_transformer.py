@@ -4,7 +4,7 @@ from jax import Array
 
 import torch
 import numpy as np
-from testing_utils import TOL
+from testing_utils import TOL, get_nbr_params
 import pytest
 
 from transformer import EncoderLayer, DecoderLayer, Encoder, Decoder, Transformer
@@ -59,6 +59,7 @@ def test_transformer_init():
 
 # https://pytorch.org/docs/stable/generated/torch.nn.Transformer.html
 @pytest.mark.parametrize("use_mask", [False, True])
+@pytest.mark.paramtest
 def test_transformer_encoder_layer(use_mask):
     emb_size = 4
     n_heads = 1
@@ -99,8 +100,14 @@ def test_transformer_encoder_layer(use_mask):
 
     assert np.allclose(y_torch, y, atol=TOL), f"y_torch = {y_torch}, y = {y}"
 
+    jax_params, torch_params = get_nbr_params(encoder_state, torch_encoder_layer, debug=True)
+    assert (
+        torch_params == jax_params
+    ), f"Got different number of parameters: {torch_params} vs {jax_params}"
+
 
 @pytest.mark.parametrize("use_mask", [False, True])
+@pytest.mark.paramtest
 def test_transformer_encoder(use_mask):
     emb_size = 4
     n_heads = 1
@@ -145,8 +152,14 @@ def test_transformer_encoder(use_mask):
 
     assert np.allclose(y_torch, y, atol=TOL), f"y_torch = {y_torch}, y = {y}"
 
+    jax_params, torch_params = get_nbr_params(encoder_state, torch_encoder, debug=True)
+    assert (
+        torch_params == jax_params
+    ), f"Got different number of parameters: {torch_params} vs {jax_params}"
+
 
 @pytest.mark.parametrize("use_mask", [False, True])
+@pytest.mark.paramtest
 def test_transformer_decoder_layer(use_mask: bool):
     emb_size = 4
     n_heads = 1
@@ -204,8 +217,14 @@ def test_transformer_decoder_layer(use_mask: bool):
 
     assert np.allclose(y_torch, y, atol=TOL), f"y_torch = {y_torch}, y = {y}"
 
+    jax_params, torch_params = get_nbr_params(decoder_state, torch_decoder_layer, debug=True)
+    assert (
+        torch_params == jax_params
+    ), f"Got different number of parameters: {torch_params} vs {jax_params}"
+
 
 @pytest.mark.parametrize("use_mask", [False, True])
+@pytest.mark.paramtest
 def test_transformer_decoder(use_mask):
     emb_size = 4
     n_heads = 1
@@ -260,8 +279,14 @@ def test_transformer_decoder(use_mask):
 
     assert np.allclose(y_torch, y, atol=TOL), f"y_torch = {y_torch}, y = {y}"
 
+    jax_params, torch_params = get_nbr_params(decoder_state, torch_decoder, debug=True)
+    assert (
+        torch_params == jax_params
+    ), f"Got different number of parameters: {torch_params} vs {jax_params}"
+
 
 @pytest.mark.parametrize("use_mask", [False, True])
+@pytest.mark.paramtest
 def test_transformer(use_mask):
     batch_size = 2
     emb_size = 4
@@ -347,3 +372,8 @@ def test_transformer(use_mask):
     logger.debug(f"y_torch: {y_torch}")
 
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
+
+    jax_params, torch_params = get_nbr_params(state, torch_transformer, debug=True)
+    assert (
+        torch_params == jax_params
+    ), f"Got different number of parameters: {torch_params} vs {jax_params}"

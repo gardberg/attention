@@ -5,7 +5,7 @@ import torch
 from attention import *
 from log_utils import logger
 import pytest
-from testing_utils import TOL
+from testing_utils import TOL, get_nbr_params
 from states import to_jax_state
 
 np.random.seed(1337)
@@ -50,6 +50,7 @@ def test_pre_attention(emb_size, n_heads, use_bias):
 @pytest.mark.parametrize(
     "n_heads, emb_size, batch_size", [(1, 2, 3), (2, 4, 3), (8, 16, 8)]
 )
+@pytest.mark.paramtest
 def test_multihead_attn(n_heads, emb_size, batch_size):
     bias = False
 
@@ -76,10 +77,15 @@ def test_multihead_attn(n_heads, emb_size, batch_size):
     logger.debug(f"y_torch.shape = {y_torch.shape}, y_jax.shape = {y_jax.shape}")
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
 
+    jax_params, torch_params = get_nbr_params(jax_mha_state, torch_mha, debug=True)
+    assert (
+        torch_params == jax_params
+    ), f"Got different number of parameters: {torch_params} vs {jax_params}"
 
 @pytest.mark.parametrize(
     "n_heads, emb_size, batch_size", [(1, 1, 1), (1, 2, 3), (2, 4, 3), (8, 16, 8)]
 )
+@pytest.mark.paramtest
 def test_attention_with_mask(n_heads, emb_size, batch_size):
     x = torch.randn(CONTEXT_LEN, batch_size, emb_size, requires_grad=False)
     mha_torch = torch.nn.MultiheadAttention(emb_size, n_heads, bias=False, dropout=0.0)
@@ -108,7 +114,12 @@ def test_attention_with_mask(n_heads, emb_size, batch_size):
         jax_out, out_torch, atol=TOL
     ), f"jax_out = {jax_out}, out_torch = {out_torch}"
 
+    jax_params, torch_params = get_nbr_params(state, mha_torch, debug=True)
+    assert (
+        torch_params == jax_params
+    ), f"Got different number of parameters: {torch_params} vs {jax_params}"
 
+@pytest.mark.paramtest
 def test_cross_attention():
     tgt_len = 3
     src_len = 4
@@ -142,3 +153,8 @@ def test_cross_attention():
 
     logger.debug(f"y_torch.shape = {y_torch.shape}, y_jax.shape = {y_jax.shape}")
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
+
+    jax_params, torch_params = get_nbr_params(jax_mha_state, torch_mha, debug=True)
+    assert (
+        torch_params == jax_params
+    ), f"Got different number of parameters: {torch_params} vs {jax_params}"

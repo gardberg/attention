@@ -9,24 +9,11 @@ from log_utils import logger
 from attention import *
 from act import *
 from states import to_jax_state
-from utils import count_params, torch_count_params
 
 
 np.random.seed(1337)
 rng = jax.random.PRNGKey(0)
 torch.manual_seed(1337)
-
-
-def _count_params(
-    jax_state: NamedTuple, torch_model: torch.nn.Module, debug=False
-) -> tuple:
-    jax_params = count_params(jax_state)
-    if debug:
-        logger.debug(f"jax_params: {jax_params}")
-    torch_params = torch_count_params(torch_model)
-    if debug:
-        logger.debug(f"torch_params: {torch_params}")
-    return jax_params, torch_params
 
 
 # Compare pytorch linear network to custom implementation
@@ -51,7 +38,7 @@ def test_dense(n_in: int, n_out: int):
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
 
     # Count params
-    jax_params, torch_params = _count_params(state, torch_linear, debug=True)
+    jax_params, torch_params = get_nbr_params(state, torch_linear, debug=True)
     assert (
         torch_params == jax_params
     ), f"Got different number of parameters: {torch_params} vs {jax_params}"
@@ -78,7 +65,7 @@ def test_dense_batch(n_in, n_out, batch_size):
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
 
     # Count params
-    jax_params, torch_params = _count_params(state, torch_linear, debug=True)
+    jax_params, torch_params = get_nbr_params(state, torch_linear, debug=True)
     assert (
         torch_params == jax_params
     ), f"Got different number of parameters: {torch_params} vs {jax_params}"
@@ -105,7 +92,7 @@ def test_dense_batch_no_bias(n_in, n_out, batch_size):
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
 
     # Count params
-    jax_params, torch_params = _count_params(state, torch_linear, debug=True)
+    jax_params, torch_params = get_nbr_params(state, torch_linear, debug=True)
     assert (
         torch_params == jax_params
     ), f"Got different number of parameters: {torch_params} vs {jax_params}"
@@ -132,7 +119,7 @@ def test_dense_square():
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
 
     # Count params
-    jax_params, torch_params = _count_params(state, torch_linear, debug=True)
+    jax_params, torch_params = get_nbr_params(state, torch_linear, debug=True)
     assert (
         torch_params == jax_params
     ), f"Got different number of parameters: {torch_params} vs {jax_params}"
@@ -158,7 +145,7 @@ def test_batchnorm_1d_inference_small(B: int, N: int):
     assert np.allclose(y, y_torch, atol=TOL), f"y = {y}, y_torch = {y_torch}"
 
     # Batchnorm has 3 more params than the count we get from torch
-    jax_params, torch_params = _count_params(state, torch_bn, debug=True)
+    jax_params, torch_params = get_nbr_params(state, torch_bn, debug=True)
     assert (
         torch_params + 3 == jax_params
     ), f"Got different number of parameters: {torch_params} vs {jax_params}"
@@ -183,7 +170,7 @@ def test_batchnorm_1d_inference(B: int, N: int, L: int):
     logger.debug(f"Diff: {np.linalg.norm(y_torch - y):.2e}")
     assert np.allclose(y, y_torch, atol=TOL), f"y = {y}, y_torch = {y_torch}"
 
-    jax_params, torch_params = _count_params(state, torch_bn, debug=True)
+    jax_params, torch_params = get_nbr_params(state, torch_bn, debug=True)
     assert (
         torch_params + 3 == jax_params
     ), f"Got different number of parameters: {torch_params} vs {jax_params}"
@@ -206,7 +193,7 @@ def test_batchnorm_1d_train(B: int, N: int):
     logger.debug(f"Diff: {np.linalg.norm(y_torch - y):.2e}")
     assert np.allclose(y, y_torch, atol=TOL), f"y = {y}, y_torch = {y_torch}"
 
-    jax_params, torch_params = _count_params(state, torch_bn, debug=True)
+    jax_params, torch_params = get_nbr_params(state, torch_bn, debug=True)
     assert (
         torch_params + 3 == jax_params
     ), f"Got different number of parameters: {torch_params} vs {jax_params}"
@@ -231,7 +218,7 @@ def test_layernorm(norm_dims: tuple):
     logger.debug(f"Diff: {np.linalg.norm(y_torch - y_jax):.2e}")
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
 
-    jax_params, torch_params = _count_params(state, torch_ln, debug=True)
+    jax_params, torch_params = get_nbr_params(state, torch_ln, debug=True)
     assert (
         torch_params == jax_params
     ), f"Got different number of parameters: {torch_params} vs {jax_params}"
@@ -273,7 +260,7 @@ def test_rmsnorm(embed_dim):
     logger.debug(f"y_torch.shape = {y_torch.shape}, y_jax.shape = {y_jax.shape}")
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
 
-    jax_params, torch_params = _count_params(state, torch_rmsnorm, debug=True)
+    jax_params, torch_params = get_nbr_params(state, torch_rmsnorm, debug=True)
     assert (
         torch_params == jax_params
     ), f"Got different number of parameters: {torch_params} vs {jax_params}"
@@ -321,7 +308,7 @@ def test_learned_embeddings(shape: tuple):
 
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
 
-    jax_params, torch_params = _count_params(embedding_state, torch_emb, debug=True)
+    jax_params, torch_params = get_nbr_params(embedding_state, torch_emb, debug=True)
     assert (
         torch_params == jax_params
     ), f"Got different number of parameters: {torch_params} vs {jax_params}"

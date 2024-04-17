@@ -4,9 +4,25 @@ from torch import nn, Tensor, sin, pow
 import torch.nn.functional as F
 from torch.nn import Parameter
 from torch.distributions.exponential import Exponential
+from typing import NamedTuple
+from utils import count_params, torch_count_params
+from log_utils import logger
 
 # Code for usage in tests
 TOL = 1e-6
+
+
+def get_nbr_params(
+    jax_state: NamedTuple, torch_model: torch.nn.Module, debug=False
+) -> tuple:
+    jax_params = count_params(jax_state)
+    if debug:
+        logger.debug(f"jax_params: {jax_params}")
+    torch_params = torch_count_params(torch_model)
+    if debug:
+        logger.debug(f"torch_params: {torch_params}")
+    return jax_params, torch_params
+
 
 
 # https://github.com/EdwardDixon/snake/blob/master/snake/activations.py

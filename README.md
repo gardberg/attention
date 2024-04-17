@@ -45,7 +45,7 @@ If the same key is split in two different places, does it result in the same sub
 - [x] Add tests to compare with pytorch implementations
 - [x] Simplify logging
 
-#### GPT
+#### Transformer
 
 - [x] Switch to using `poetry` for dependencies
 - [x] Attention Masking
@@ -53,9 +53,13 @@ If the same key is split in two different places, does it result in the same sub
 - [x] Dropout
 - [x] Positional Encoding
 - [x] Tokenizer (tiktoken)
-- [ ] Encoder
-- [ ] Decoder
-- [ ] Transformer
+- [x] Encoder
+- [x] Decoder
+- [x] Transformer
+- [x] Seq2Seq
+- [ ] T5
+  - [ ] Inference using random weights
+  - [ ] Inference using t5-small weights
 
 #### Improvements
 
