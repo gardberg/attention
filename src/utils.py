@@ -31,7 +31,7 @@ def state_to_str(state: Union[NamedTupleSubclass, Array, bool], indent=0):
     if isinstance(state, bool):
         return state
 
-    result = [f"{state.__class__.__name__}:"] if state else []
+    result = [f"{state.__class__.__name__}:"] if state is not None else []
     for name, value in state._asdict().items():
         field_str = f"  {name}: " if indent > 0 else f"{name}: "
         result.append(f"  {field_str}{state_to_str(value, indent + 1)}")
