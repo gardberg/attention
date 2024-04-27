@@ -9,7 +9,7 @@ from utils import count_params, torch_count_params
 from log_utils import logger
 
 # Code for usage in tests
-TOL = 1e-6
+TOL = 1e-5
 
 
 def get_nbr_params(

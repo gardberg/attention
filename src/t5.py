@@ -1,13 +1,12 @@
 
 # T5 translation model based on google t5-small for translation
 # takes in input ids in the form of tokens, and returns predicted tokens (for translation)
-from attention import Embedding
-from typing import NamedTuple, Callable
-from states import LinearState, T5DenseState
+from attention import Embedding, RMSNorm
+from typing import Callable
+from states import T5DenseState, T5FeedForwardState
 from jax import Array, random
 from attention import Linear
 from act import relu, dropout
-import torch.nn as nn
 
 # https://github.com/huggingface/transformers/blob/e4ea19b958c89d61e42461fac6ac8441787121f8/src/transformers/models/t5/modeling_t5.py#L646
 class T5Encoder:
@@ -42,3 +41,18 @@ class T5Dense:
             wo=self.wo.init_state(rng2),
         )
 
+
+class T5FeedForward:
+    def __init__(self, n_in: int, d_ff: int, dropout: float=0.1):
+        self.dense = T5Dense(n_in, d_ff, dropout)
+        # T5LayerFF uses custom LayerNorm which is equivalent to RMSNorm
+        self.norm = RMSNorm(n_in, eps=1e-6)
+        self.dropout = dropout
+
+    def __call__(self, state: T5FeedForwardState, x: Array, rng: Array, training=True) -> Array:
+        rng1, rng2 = random.split(rng, 2)
+
+        z = self.norm(state.norm, x)
+        z = self.dense(state.dense, z, rng1, training)
+        x += dropout(z, self.dropout, rng2, training)
+        return x

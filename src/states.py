@@ -2,7 +2,7 @@ from typing import NamedTuple, TypeVar, Type
 import jax
 from jax import Array
 import jax.numpy as jnp
-from transformers.models.t5.modeling_t5 import T5DenseActDense
+from transformers.models.t5.modeling_t5 import T5DenseActDense, T5LayerFF
 
 from torch import nn
 
@@ -88,10 +88,16 @@ class Seq2SeqTransformerState(NamedTuple):
     tgt_embedding: EmbeddingState
     project_out: LinearState
 
-    
+
+# T5 States
 class T5DenseState(NamedTuple):
     wi: LinearState
     wo: LinearState
+
+
+class T5FeedForwardState(NamedTuple):
+    dense: T5DenseState
+    norm: RMSNormState
 
 
 # TODO: Move into separate file
@@ -198,6 +204,11 @@ def to_jax_state(module: nn.Module) -> Type[NamedTupleSubclass]:
                 weights=jnp.array(module.wo.weight.detach()),
                 bias=jnp.array(module.wo.bias.detach()) if module.wo.bias is not None else None,
             ),
+        )
+    elif isinstance(module, T5LayerFF):
+        return T5FeedForwardState(
+            dense=to_jax_state(module.DenseReluDense),
+            norm=RMSNormState(jnp.array(module.layer_norm.weight.detach())),
         )
 
     else:
