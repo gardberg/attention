@@ -96,6 +96,8 @@ class LayerNorm:
         ), f"Input shape {x.shape} must have last dimension matching norm_dims: {self.norm_dims}"
         # x.shape: (*, *norm_dims), e.g. (context_len, batch_size, emb_size)
 
+        logger.debug(f"x.dtype: {x.dtype}, gamma.dtype: {state.gamma.dtype}")
+
         # compute mean over last n = len(self.norm_dims) dimensions
         axes_to_reduce = tuple(range(-len(self.norm_dims), 0))  # (-n, ..., -1)
         means = jnp.mean(x, axis=axes_to_reduce, keepdims=True)
