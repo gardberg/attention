@@ -35,3 +35,6 @@ minversion = "6.0"
 testpaths = [
     "src/tests",
 ]
+markers = [
+    "paramtest: compares number of parameters"
+]

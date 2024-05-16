@@ -2,12 +2,14 @@ import torch
 import jax.numpy as jnp
 from transformers.models.t5.modeling_t5 import T5DenseActDense, T5LayerFF
 from states import to_jax_state
+from pytest import fixture
 
 from utils import ROOT_DIR
 from testing_utils import TOL
 import os
 from transformers.models.t5 import T5Config
 import json
+from huggingface_hub import hf_hub_download
 
 from t5 import T5Dense, T5FeedForward
 import jax
@@ -15,16 +17,23 @@ import jax
 from log_utils import logger
 
 # get t5 config
-REL_PATH = "..\hf_hub\models--google-t5--t5-small\snapshots\df1b051c49625cf57a3d0d8d3863ed4d13564fe4\config.json"
-CONFIG_PATH = os.path.join(ROOT_DIR, REL_PATH)
 
-try:
-    with open(CONFIG_PATH, "r") as f:
-        config = json.load(f)
-except FileNotFoundError:
-    raise FileNotFoundError(f"T5 config not found at {CONFIG_PATH}. Tip: symlink HF_HUB to ../hf_hub.")
+@fixture
+def t5_config() -> T5Config:
 
-t5_config = T5Config.from_dict(config)
+    T5_REPO = "google-t5/t5-small"
+    CONFIG_NAME = "config.json"
+
+    t5_config_path = hf_hub_download(repo_id=T5_REPO, filename=CONFIG_NAME)
+
+    try:
+        with open(t5_config_path, "r") as f:
+            t5_config = json.load(f)
+    except Exception as e:
+        logger.error(f"Error loading t5 config: {e}")
+        raise e
+
+    return T5Config.from_dict(t5_config)
 
 
 torch.random.manual_seed(0)
@@ -38,7 +47,7 @@ test_shape = (BATCH_SIZE, SEQ_LEN, EMBED_SIZE)
 RNG = jax.random.PRNGKey(0)
 
 
-def test_t5_dense():
+def test_t5_dense(t5_config: T5Config):
     x = torch.randn(test_shape)
     x_jax = jnp.array(x)
 
@@ -58,7 +67,7 @@ def test_t5_dense():
     assert jnp.allclose(y_torch.numpy(), y_jax, atol=1e-4)
     
 
-def test_t5_ff():
+def test_t5_ff(t5_config: T5Config):
     x = torch.randn(test_shape)
     x_jax = jnp.array(x)
 
