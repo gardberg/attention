@@ -318,13 +318,13 @@ class MultiHeadAttention:
         assert mask.ndim == 2, f"Expected mask.ndim == 2, got {mask.ndim}"
         return jnp.tile(mask[:, :, None, None], (1, 1, batch_size, n_heads))
 
-    @lru_cache
     def get_causal_mask(
         self, tgt_len: int, batch_size: int, src_len: int = None
     ) -> Array:
         # creates a causal mask of shape (tgt_len, src_len, batch_size, n_heads)
         # mask[i, j, ...] = true -> i can not attend to j
         base_mask = create_causal_mask(tgt_len, src_len=src_len)
+        print(f"Created mask: {base_mask.shape}")
 
         # tile into shape (tgt_len, src_len, batch_size, n_heads)
         return self._get_mask_batched(base_mask, batch_size, self.n_heads)
@@ -336,12 +336,18 @@ class MultiHeadAttention:
         k: Array,
         v: Array,
         mask: Array = None,
+        use_cache: bool = False,
+        kv_cache: tuple[Array, Array] = None,
     ) -> Array:
         """
-        q.shape:    (tgt_len, batch_size, emb_size)
-        k, v shape: (src_len, batch_size, emb_size)
-        mask.shape: (tgt_len, src_len) or None
+        q.shape:        (tgt_len, batch_size, emb_size)
+        k, v shape:     (src_len, batch_size, emb_size)
+        mask.shape:     (tgt_len, src_len) or None
+        kv_cache.shape: (cached_keys, cached_values) with shape (src_len - 1, batch_size, n_heads, d_k)
         """
+
+        print(f"forward with q: {q.shape}")
+        if kv_cache is not None: print(f"kv_cache: {kv_cache[0].shape}, {kv_cache[1].shape}")
 
         assert (
             k.shape == v.shape
@@ -352,12 +358,34 @@ class MultiHeadAttention:
         tgt_len, batch_size, emb_size = q.shape
         src_len = k.shape[0]
 
-        if mask is None and self.causal:
-            mask = self.get_causal_mask(tgt_len, batch_size, src_len)
-
         query = self.query_fn(state.query, q)
-        key = self.key_fn(state.key, k)
-        value = self.value_fn(state.value, v)
+
+        if use_cache and kv_cache is not None:
+            assert len(kv_cache) == 2, f"Expected kv_cache to be a tuple of length 2"
+            cached_keys, cached_values = kv_cache
+            print(f"cached_keys: {cached_keys.shape}, cached_values: {cached_values.shape}")
+
+            next_k = k[-1][None, ...]
+            next_v = v[-1][None, ...]
+
+            print(f"next_k: {next_k.shape}, next_v: {next_v.shape}")
+
+            key = jnp.concatenate(
+                [cached_keys, self.key_fn(state.key, next_k)], axis=0
+            )
+            value = jnp.concatenate(
+                [cached_values, self.value_fn(state.value, next_v)], axis=0
+            )
+            kv_cache = (key, value)
+
+            self.debug_states["key"] = key
+            self.debug_states["value"] = value
+            
+        else:
+            key = self.key_fn(state.key, k)
+            value = self.value_fn(state.value, v)
+
+            if use_cache: kv_cache = (key, value)
 
         self.debug_states["query"] = query
         self.debug_states["key"] = key
@@ -383,12 +411,16 @@ class MultiHeadAttention:
         self.debug_states["scaled_scores"] = scaled_scores
         self.debug_states["mask"] = mask
 
+        if mask is None and self.causal:
+            mask = self.get_causal_mask(tgt_len, batch_size, src_len)
+
         if mask is not None:
             assert (
                 mask.shape[:2] == scores.shape[:2]
             ), f"Mask shape {mask.shape[:2]} must match scores shape {scores.shape[:2]}. To create a causal mask, use create_causal_mask()"
-            # logger.debug(f"mask: {mask}")
-            mask = self._get_mask_batched(mask, batch_size, self.n_heads)
+
+            if mask.ndim == 2:
+                mask = self._get_mask_batched(mask, batch_size, self.n_heads)
 
             # replace values in scores with float('-inf') where mask is True
             scaled_scores = jnp.where(mask, float("-inf"), scaled_scores)
@@ -415,17 +447,11 @@ class MultiHeadAttention:
         self.debug_states["out"] = out
 
         # out.shape: (tgt_len, batch_size, emb_dim)
-        return out
+        # kv_cache.shape: ((src_len, batch_size, n_heads, d_k), *)
+        return (out, kv_cache) if use_cache else out
 
-    def __call__(
-        self,
-        state: MultiHeadAttentionState,
-        q: Array,
-        k: Array,
-        v: Array,
-        mask: Array = None,
-    ) -> Array:
-        return self.forward(state, q, k, v, mask)
+    def __call__(self, *args, **kwargs) -> Array:
+        return self.forward(*args, **kwargs)
 
 
 class PositionalEncoding:

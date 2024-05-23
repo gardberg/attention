@@ -82,6 +82,26 @@ def test_multihead_attn(n_heads, emb_size, batch_size):
         torch_params == jax_params
     ), f"Got different number of parameters: {torch_params} vs {jax_params}"
 
+
+@pytest.mark.parametrize(
+    "n_heads, emb_size, batch_size", [(1, 2, 3), (2, 4, 3), (8, 16, 8)]
+)
+@pytest.mark.paramtest
+def test_multihead_attn_kv_cache(n_heads, emb_size, batch_size):
+    xs = jax.random.normal(jax.random.PRNGKey(0), (CONTEXT_LEN, batch_size, emb_size))
+    x_single = xs[0][None, ...]
+
+    mha = MultiHeadAttention(emb_size, n_heads, out_bias=False, v_bias=False)
+    state = mha.init_state(rng)
+
+    kv_cache = None
+    for _ in range(4):
+        y, kv_cache = mha(state, xs, xs, xs, kv_cache=kv_cache, use_cache=True)
+        y2 = mha(state, xs, xs, xs, use_cache=False)
+        xs = jnp.concatenate([xs, x_single], axis=0)
+
+        assert np.allclose(y, y2, atol=TOL), f"y = {y}, y2 = {y2}"
+
 @pytest.mark.parametrize(
     "n_heads, emb_size, batch_size", [(1, 1, 1), (1, 2, 3), (2, 4, 3), (8, 16, 8)]
 )
