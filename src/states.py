@@ -100,6 +100,15 @@ class T5FeedForwardState(NamedTuple):
     norm: RMSNormState
 
 
+# TODO: Redundant with MultiHeadAttentionState?
+class T5MultiHeadAttentionState(NamedTuple):
+    query: LinearState
+    key: LinearState
+    value: LinearState
+    output: LinearState
+    pos_emb: EmbeddingState
+
+
 # TODO: Move into separate file
 # Requires torch import, which is a bit heavy
 NamedTupleSubclass = TypeVar("NamedTupleSubclass", bound=NamedTuple)

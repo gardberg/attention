@@ -44,6 +44,8 @@ If the same key is split in two different places, does it result in the same sub
 
 - [x] Add tests to compare with pytorch implementations
 - [x] Simplify logging
+- [ ] Switch to __name__ logging
+- [ ] Switch to using single Array type for shape hinting
 
 #### Transformer
 
@@ -67,6 +69,7 @@ If the same key is split in two different places, does it result in the same sub
 - [x] SwiGLU layer
 - [x] GeGLU
 - [x] Rotational Positional Encoding
+- [x] K/V Cache
 - [ ] Multi-Query Attention (https://arxiv.org/abs/1911.02150)
 - [ ] Grouped Query Attention
 
