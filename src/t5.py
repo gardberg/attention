@@ -5,10 +5,9 @@ from typing import Callable
 from jax import random
 import jax.numpy as jnp
 
-from attention import Embedding, RMSNorm
-from attention import Linear
-from act import relu, dropout
-from states import T5DenseState, T5FeedForwardState, T5MultiHeadAttentionState, EmbeddingState
+from attention import Embedding, RMSNorm, Linear, PreAttention, MultiHeadAttention
+from act import relu, dropout, softmax
+from states import T5DenseState, T5FeedForwardState, T5MultiHeadAttentionState, EmbeddingState, LinearState
 from annotate import Array
 
 # https://github.com/huggingface/transformers/blob/e4ea19b958c89d61e42461fac6ac8441787121f8/src/transformers/models/t5/modeling_t5.py#L646
@@ -30,16 +29,180 @@ class T5MultiHeadAttention:
         n_heads: int,
         use_rel_attn_bias: bool=False,
         rel_attn_n_buckets: int=32,
-        rel_attn_max_distance: int=128
+        rel_attn_max_distance: int=128,
+        dropout: float=0.1,
     ):
-        self.emb_size = emb_size # d_model
+
         self.n_heads = n_heads
+        self.emb_size = emb_size
+
+        assert emb_size % n_heads == 0, "emb_size must be divisible by n_heads"
+
+        self.d_k = emb_size // n_heads # Hidden inner dim per head
+        self.inner_dim = self.n_heads * self.d_k
+
+        self.query_dense = Linear(emb_size, self.inner_dim, bias=False)
+        self.key_dense = Linear(emb_size, self.inner_dim, bias=False)
+        self.value_dense = Linear(emb_size, self.inner_dim, bias=False)
+        self.out_dense = Linear(self.inner_dim, emb_size, bias=False)
+
         self.use_rel_attn_bias = use_rel_attn_bias
         self.rel_attn_n_buckets = rel_attn_n_buckets
         self.rel_attn_max_distance = rel_attn_max_distance
+        self.dropout = dropout
 
         if self.use_rel_attn_bias:
             self.pos_emb = Embedding(self.rel_attn_n_buckets, self.n_heads)
+
+        self.debug_states = dict()
+
+    def get_kv(
+        self,
+        state: T5MultiHeadAttentionState,
+        xk: Array["batch_size, src_len, emb_size"],
+        xv: Array,
+        use_cache: bool,
+        kv_cache: tuple[Array, Array]
+    ) -> tuple[Array, Array]:
+        if use_cache and kv_cache is not None:
+            assert len(kv_cache) == 2, "kv_cache must be a tuple of length 2"
+            cached_keys, cached_values = kv_cache
+            
+            next_k = xk[-1][None, ...]
+            next_v = xv[-1][None, ...]
+
+            key = jnp.concatenate(
+                [cached_keys, self.apply_dense(state.key, next_k, self.key_dense)], axis=0
+            )
+
+            value = jnp.concatenate(
+                [cached_values, self.apply_dense(state.value, next_v, self.value_dense)], axis=0
+            )
+        else:
+            key = self.apply_dense(state.key, xk, self.key_dense)
+            value = self.apply_dense(state.value, xv, self.value_dense)
+            
+        # (batch_size, n_heads, src_len, emb_size)
+        return key, value
+
+    def apply_dense(self, state: LinearState, x: Array, dense_fn: Linear) -> Array:
+        # xq: (batch_size, context_len, emb_size)
+        # dense_fn: Linear callable
+
+        batch_size = x.shape[0]
+        query: Array["batch_size, context_len, emb_size"] = dense_fn(state, x)
+        query: Array["batch_size, n_heads, context_len, d_k"] = query.reshape(batch_size, -1, self.n_heads, self.d_k).transpose(0, 2, 1, 3)
+        return query
+
+    def forward(
+        self,
+        state: T5MultiHeadAttentionState,
+        xq: Array["batch_size, tgt_len, emb_size"],
+        xk: Array["batch_size, src_len, emb_size"],
+        xv: Array["batch_size, src_len, emb_size"],
+        rng: Array,
+        mask: Array["tgt_len, src_len"] = None,
+        use_cache: bool = False,
+        kv_cache: tuple[Array, Array] = None,
+        training = False,
+    ) -> tuple[Array["batch_size, tgt_len, emb_size"], tuple[Array, Array]]:
+
+        # ! Uses batch dimension first !
+
+        # Returns (attn_output, kv_cache) if use_cache, else attn_output
+        # kv_cache: tuple[()]
+        
+        batch_size, tgt_len = xq.shape[:2]
+        src_len = xk.shape[1]
+
+        # TODO: Masking
+
+        query: Array["batch_size, n_heads, tgt_len, d_k"] = self.apply_dense(state.query, xq, self.query_dense)
+
+        assert query.shape == (
+            batch_size,
+            self.n_heads,
+            tgt_len,
+            self.d_k,
+        ), f"Expected shape {(batch_size, self.n_heads, tgt_len, self.d_k)}, got {query.shape}"
+
+        # (batch_size, n_heads, src_len, d_k)
+        key, value = self.get_kv(state, xk, xv, use_cache, kv_cache)
+
+        if use_cache: kv_cache = (key, value)
+
+        self.debug_states["query"] = query.copy()
+        self.debug_states["key"] = key.copy()
+        self.debug_states["value"] = value.copy()
+
+        scores: Array["batch_size, n_heads, tgt_len, src_len"] = jnp.matmul(query, key.transpose((0, 1, 3, 2)))
+
+        self.debug_states["scores"] = scores.copy()
+
+        assert scores.shape == (
+            batch_size,
+            self.n_heads,
+            tgt_len,
+            src_len
+        ), f"Expected shape {(batch_size, self.n_heads, tgt_len, src_len)}, got {scores.shape}"
+
+        # TODO: Is scaling done in reference impl?
+        # scores = scores * (1 / jnp.sqrt(self.d_k))
+
+        # TODO: Only keep values relevant with kv cache
+        position_bias: Array["1, n_heads, tgt_len, src_len"] = self.compute_pos_bias(state.pos_emb, tgt_len, src_len)
+
+        self.debug_states["position_bias"] = position_bias.copy()
+
+        assert position_bias.shape == (
+            1,
+            self.n_heads,
+            tgt_len,
+            src_len,
+        ), f"Expected shape {(1, self.n_heads, tgt_len, src_len)}, got {position_bias.shape}"
+        
+        # broadcast to (batch_size, n_heads, tgt_len, src_len)
+        position_bias = jnp.repeat(position_bias, batch_size, axis=0)
+
+        scores += position_bias
+
+        attn_weights = softmax(scores, dim=-1)
+
+        self.debug_states["attn_weights"] = attn_weights.copy()
+
+        attn_weights = dropout(attn_weights, self.dropout, rng, training)
+
+        self.debug_states["attn_weights_dropout"] = attn_weights.copy()
+
+        attn: Array["batch_size, n_heads, tgt_len, d_k"] = jnp.matmul(attn_weights, value)
+        attn: Array["batch_size, tgt_len, emb_size"] = attn.transpose((0, 2, 1, 3)).reshape(batch_size, tgt_len, self.inner_dim)
+
+        self.debug_states["attn"] = attn.copy()
+
+        assert attn.shape == (
+            batch_size,
+            tgt_len,
+            self.inner_dim,
+        ), f"Expected shape {(batch_size, tgt_len, self.inner_dim)}, got {attn.shape}"
+
+        out: Array["tgt_len, batch_size, emb_size"] = self.out_dense(state.output, attn)
+
+        self.debug_states["out"] = out.copy()
+
+        return (out, kv_cache) if use_cache else out
+
+    def __call__(self, *args, **kwargs) -> Array:
+        return self.forward(*args, **kwargs)
+
+    def init_state(self, rng: Array) -> T5MultiHeadAttentionState:
+        rngs = random.split(rng, 5)
+        return T5MultiHeadAttentionState(
+            query=self.query_dense.init_state(rngs[0]),
+            key=self.key_dense.init_state(rngs[1]),
+            value=self.value_dense.init_state(rngs[2]),
+            output=self.out_dense.init_state(rngs[3]),
+            pos_emb=self.pos_emb.init_state(rngs[4]) if self.use_rel_attn_bias else None,
+        )
 
     def compute_pos_bias(
         self, 
@@ -47,6 +210,10 @@ class T5MultiHeadAttention:
         query_len: int,
         key_len: int,
     ) -> Array["1, n_heads, query_len, key_len"]:
+
+        if not self.use_rel_attn_bias:
+            # return zero tensor
+            return jnp.zeros((1, self.n_heads, query_len, key_len))
 
         # int64 in original
         context_pos = jnp.arange(query_len, dtype=jnp.int32)[:, None]
@@ -95,8 +262,6 @@ class T5MultiHeadAttention:
 
         rel_buckets += jnp.where(is_small, relative_pos, rel_pos_if_large)
         return rel_buckets
-
-
 
 
 class T5Dense:

@@ -107,3 +107,58 @@ def test_t5_mha_relative_pos(t5_config: T5Config, q_len: int, k_len: int):
     assert jnp.allclose(torch_pos_bias, jax_pos_bias, atol=TOL)
     
 
+@mark.parametrize("tgt_len", [2, 3])
+def test_t5_self_mha(t5_config, tgt_len):
+    xq = torch.randn((BATCH_SIZE, tgt_len, EMBED_SIZE))
+
+    # Torch
+    torch_t5_mha = T5Attention(t5_config, has_relative_attention_bias=True).eval()
+    with torch.no_grad():
+        attn_out, kv_state, pos_bias = torch_t5_mha(xq)
+
+    # Jax
+    rng = jax.random.PRNGKey(0)
+    xq_jax = jnp.array(xq.detach().numpy())
+
+    t5_jax = T5MultiHeadAttention(
+        emb_size=t5_config.d_model,
+        n_heads=t5_config.num_heads,
+        use_rel_attn_bias=True
+    )
+
+    state = to_jax_state(torch_t5_mha)
+
+    attn_out_jax = t5_jax(state, xq_jax, xq_jax, xq_jax, rng, training=False)
+
+    assert attn_out.shape == attn_out_jax.shape
+    
+    assert jnp.allclose(attn_out.numpy(), attn_out_jax, atol=TOL)
+
+@mark.parametrize("tgt_len, src_len", [(2, 3), (3, 2)])
+def test_t5_cross_mha(t5_config, tgt_len, src_len):
+
+    xq = torch.randn((BATCH_SIZE, tgt_len, EMBED_SIZE))
+    xkv = torch.randn((BATCH_SIZE, src_len, EMBED_SIZE))
+
+    torch_t5_mha = T5Attention(t5_config, has_relative_attention_bias=False).eval()
+    with torch.no_grad():
+        attn_out, kv_state, pos_bias = torch_t5_mha(xq, key_value_states=xkv)
+
+    # Jax
+    rng = jax.random.PRNGKey(0)
+    xq_jax = jnp.array(xq.detach().numpy())
+    xkv_jax = jnp.array(xkv.detach().numpy())
+    
+    t5_jax = T5MultiHeadAttention(
+        emb_size=t5_config.d_model,
+        n_heads=t5_config.num_heads,
+        use_rel_attn_bias=False
+    )
+
+    state = to_jax_state(torch_t5_mha)
+    
+    attn_out_jax = t5_jax(state, xq_jax, xkv_jax, xkv_jax, rng, training=False)
+
+    assert attn_out.shape == attn_out_jax.shape
+    
+    assert jnp.allclose(attn_out.numpy(), attn_out_jax, atol=TOL)

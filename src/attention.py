@@ -291,6 +291,7 @@ class MultiHeadAttention:
                     If False, no mask is used. Manually specifying a mask overrides this setting.
         """
 
+        self.emb_size = emb_size
         self.n_heads = n_heads
         # Features per head (head dim)
         assert emb_size % n_heads == 0, f"emb_size must be divisible by n_heads"
@@ -329,6 +330,34 @@ class MultiHeadAttention:
         # tile into shape (tgt_len, src_len, batch_size, n_heads)
         return self._get_mask_batched(base_mask, batch_size, self.n_heads)
 
+    def get_kv(
+        self,
+        state: MultiHeadAttentionState,
+        k: Array,
+        v: Array,
+        use_cache: bool, 
+        kv_cache: tuple[Array, Array]
+    ) -> tuple[Array, Array]:
+
+        if use_cache and kv_cache is not None:
+            assert len(kv_cache) == 2, f"Expected kv_cache to be a tuple of length 2"
+            cached_keys, cached_values = kv_cache
+
+            next_k = k[-1][None, ...]
+            next_v = v[-1][None, ...]
+
+            key = jnp.concatenate(
+                [cached_keys, self.key_fn(state.key, next_k)], axis=0
+            )
+            value = jnp.concatenate(
+                [cached_values, self.value_fn(state.value, next_v)], axis=0
+            )
+        else:
+            key = self.key_fn(state.key, k)
+            value = self.value_fn(state.value, v)
+
+        return key, value
+
     def forward(
         self,
         state: MultiHeadAttentionState,
@@ -346,9 +375,6 @@ class MultiHeadAttention:
         kv_cache.shape: (cached_keys, cached_values) with shape (src_len - 1, batch_size, n_heads, d_k)
         """
 
-        print(f"forward with q: {q.shape}")
-        if kv_cache is not None: print(f"kv_cache: {kv_cache[0].shape}, {kv_cache[1].shape}")
-
         assert (
             k.shape == v.shape
         ), f"Expected k.shape == v.shape, got {k.shape} != {v.shape}"
@@ -360,32 +386,9 @@ class MultiHeadAttention:
 
         query = self.query_fn(state.query, q)
 
-        if use_cache and kv_cache is not None:
-            assert len(kv_cache) == 2, f"Expected kv_cache to be a tuple of length 2"
-            cached_keys, cached_values = kv_cache
-            print(f"cached_keys: {cached_keys.shape}, cached_values: {cached_values.shape}")
+        key, value = self.get_kv(state, k, v, use_cache, kv_cache)
 
-            next_k = k[-1][None, ...]
-            next_v = v[-1][None, ...]
-
-            print(f"next_k: {next_k.shape}, next_v: {next_v.shape}")
-
-            key = jnp.concatenate(
-                [cached_keys, self.key_fn(state.key, next_k)], axis=0
-            )
-            value = jnp.concatenate(
-                [cached_values, self.value_fn(state.value, next_v)], axis=0
-            )
-            kv_cache = (key, value)
-
-            self.debug_states["key"] = key
-            self.debug_states["value"] = value
-            
-        else:
-            key = self.key_fn(state.key, k)
-            value = self.value_fn(state.value, v)
-
-            if use_cache: kv_cache = (key, value)
+        if use_cache: kv_cache = (key, value)
 
         self.debug_states["query"] = query
         self.debug_states["key"] = key

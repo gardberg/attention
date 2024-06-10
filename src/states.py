@@ -2,7 +2,7 @@ from typing import NamedTuple, TypeVar, Type
 import jax
 from jax import Array
 import jax.numpy as jnp
-from transformers.models.t5.modeling_t5 import T5DenseActDense, T5LayerFF
+from transformers.models.t5.modeling_t5 import T5DenseActDense, T5LayerFF, T5Attention
 
 from torch import nn
 
@@ -219,6 +219,28 @@ def to_jax_state(module: nn.Module) -> Type[NamedTupleSubclass]:
             dense=to_jax_state(module.DenseReluDense),
             norm=RMSNormState(jnp.array(module.layer_norm.weight.detach())),
         )
+
+    elif isinstance(module, T5Attention):
+        return T5MultiHeadAttentionState(
+            query=to_jax_state(module.q),
+            key=to_jax_state(module.k),
+            value=to_jax_state(module.v),
+            output=to_jax_state(module.o),
+            pos_emb=to_jax_state(module.relative_attention_bias)
+            if hasattr(module, "relative_attention_bias")
+            else None,
+        )
+
+    # elif isinstance(module, T5Attention):
+    #     return T5MultiHeadAttentionState(
+    #         query=LinearState(jnp.array(module.q.weight.T.detach().numpy()), None),
+    #         key=LinearState(jnp.array(module.k.weight.T.detach().numpy()), None),
+    #         value=LinearState(jnp.array(module.v.weight.T.detach().numpy()), None),
+    #         output=LinearState(jnp.array(module.o.weight.T.detach().numpy()), None),
+    #         pos_emb=to_jax_state(module.relative_attention_bias)
+    #         if hasattr(module, "relative_attention_bias")
+    #         else None,
+    #     )
 
     else:
         raise NotImplementedError(
