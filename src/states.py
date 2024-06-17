@@ -2,7 +2,7 @@ from typing import NamedTuple, TypeVar, Type
 import jax
 from jax import Array
 import jax.numpy as jnp
-from transformers.models.t5.modeling_t5 import T5DenseActDense, T5LayerFF, T5Attention
+from transformers.models.t5.modeling_t5 import T5DenseActDense, T5LayerFF, T5Attention, T5LayerSelfAttention, T5LayerCrossAttention, T5Block
 
 from torch import nn
 
@@ -107,6 +107,22 @@ class T5MultiHeadAttentionState(NamedTuple):
     value: LinearState
     output: LinearState
     pos_emb: EmbeddingState
+
+
+class T5AttentionLayerState(NamedTuple):
+    attention: T5MultiHeadAttentionState
+    norm: RMSNormState
+
+
+class T5EncoderBlockState(NamedTuple):
+    self_attn_layer: T5AttentionLayerState
+    feed_forward: T5FeedForwardState 
+
+
+class T5DecoderBlockState(NamedTuple):
+    self_attn_layer: T5AttentionLayerState
+    cross_attn_layer: T5AttentionLayerState
+    feed_forward: T5FeedForwardState
 
 
 # TODO: Move into separate file
@@ -231,16 +247,31 @@ def to_jax_state(module: nn.Module) -> Type[NamedTupleSubclass]:
             else None,
         )
 
-    # elif isinstance(module, T5Attention):
-    #     return T5MultiHeadAttentionState(
-    #         query=LinearState(jnp.array(module.q.weight.T.detach().numpy()), None),
-    #         key=LinearState(jnp.array(module.k.weight.T.detach().numpy()), None),
-    #         value=LinearState(jnp.array(module.v.weight.T.detach().numpy()), None),
-    #         output=LinearState(jnp.array(module.o.weight.T.detach().numpy()), None),
-    #         pos_emb=to_jax_state(module.relative_attention_bias)
-    #         if hasattr(module, "relative_attention_bias")
-    #         else None,
-    #     )
+    elif isinstance(module, T5LayerSelfAttention):
+        return T5AttentionLayerState(
+            attention=to_jax_state(module.SelfAttention),
+            norm=RMSNormState(jnp.array(module.layer_norm.weight.detach())),
+        )
+
+    elif isinstance(module, T5LayerCrossAttention):
+        return T5AttentionLayerState(
+            attention=to_jax_state(module.EncDecAttention),
+            norm=RMSNormState(jnp.array(module.layer_norm.weight.detach())),
+        )
+
+    # if is instace T5Block or has class name T5Block
+    elif isinstance(module, T5Block) or module.__class__.__name__ == "T5Block":
+        if module.is_decoder:
+            return T5DecoderBlockState(
+                self_attn_layer=to_jax_state(module.layer[0]),
+                cross_attn_layer=to_jax_state(module.layer[1]),
+                feed_forward=to_jax_state(module.layer[2]),
+            )
+        else:
+            return T5EncoderBlockState(
+                self_attn_layer=to_jax_state(module.layer[0]),
+                feed_forward=to_jax_state(module.layer[-1]),
+            )
 
     else:
         raise NotImplementedError(

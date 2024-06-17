@@ -5,9 +5,9 @@ from typing import Callable
 from jax import random
 import jax.numpy as jnp
 
-from attention import Embedding, RMSNorm, Linear, PreAttention, MultiHeadAttention
+from attention import Embedding, RMSNorm, Linear
 from act import relu, dropout, softmax
-from states import T5DenseState, T5FeedForwardState, T5MultiHeadAttentionState, EmbeddingState, LinearState
+from states import T5DenseState, T5FeedForwardState, T5MultiHeadAttentionState, EmbeddingState, LinearState, T5AttentionLayerState, T5EncoderBlockState, T5DecoderBlockState
 from annotate import Array
 
 # https://github.com/huggingface/transformers/blob/e4ea19b958c89d61e42461fac6ac8441787121f8/src/transformers/models/t5/modeling_t5.py#L646
@@ -22,6 +22,165 @@ class T5Model:
         self.decoder = None
 
 
+# T5Stack with encoder config
+class T5Encoder:
+    def __init__(self, emb_size: int, n_layers: int, vocab_size: int, dropout_rate: float=0.1):
+        self.emb_size = emb_size
+
+        # Shared between enconder and decoder 
+        # -> make sure to use same weights from state!
+        self.embedding = Embedding(vocab_size, emb_size)
+
+        # Only first block uses relative attention bias
+        self.block = [
+            T5EncoderBlock(use_rel_attn_bias=bool(i == 0)) for i in range(n_layers)
+        ]
+
+        self.norm = RMSNorm(self.emb_size, eps=1e-6)
+        self.dropout_rate = dropout_rate
+
+    def forward(self):
+        # TODO
+        pass
+
+
+class T5EncoderBlock:
+    def __init__(self, emb_size: int, n_heads: int, dropout_rate: float=0.1, use_rel_attn_bias: bool=False):
+        self.self_attn_layer = T5SelfAttention(
+            emb_size,
+            n_heads,
+            dropout=dropout_rate,
+            use_rel_attn_bias=use_rel_attn_bias)
+
+        self.feed_forward = T5FeedForward(emb_size, 4 * emb_size) # 2048
+
+    def forward(
+        self,
+        state: T5EncoderBlockState,
+        x: Array["batch_size, context_len, emb_size"],
+        rng: Array,
+        training = False,
+    ) -> Array["batch_size, context_len, emb_size"]:
+
+        rngs = random.split(rng, 2)
+        
+        self_attn_out = self.self_attn_layer(state.self_attn_layer, x, rngs[0], training=training)
+        return self.feed_forward(state.feed_forward, self_attn_out, rngs[1], training=training)
+
+    def __call__(self, *args, **kwargs) -> Array:
+        return self.forward(*args, **kwargs)
+
+
+class T5DecoderBlock:
+    def __init__(self, emb_size: int, n_heads: int, dropout_rate: float=0.1, use_rel_attn_bias: bool=False):
+        self.self_attn_layer = T5SelfAttention(
+            emb_size,
+            n_heads,
+            dropout=dropout_rate,
+            use_rel_attn_bias=use_rel_attn_bias,
+            bidirectional=False)
+
+        self.cross_attn_layer = T5CrossAttention(emb_size, n_heads, dropout=dropout_rate)
+        self.feed_forward = T5FeedForward(emb_size, 4 * emb_size)
+
+        self.debug_states = dict()
+
+    def forward(
+        self,
+        state: T5DecoderBlockState,
+        xq: Array["batch_size, tgt_len, emb_size"],
+        xkv: Array["batch_size, src_len, emb_size"], # encoder hidden states
+        rng: Array,
+        training = False,
+    ) -> Array["batch_size, tgt_len, emb_size"]:
+
+        rngs = random.split(rng, 3)
+
+        self.debug_states["inputs_q"] = xq.copy()
+        self.debug_states["inputs_kv"] = xkv.copy()
+
+        self_attn_out = self.self_attn_layer(state.self_attn_layer, xq, rngs[0], training=training)
+
+        self.debug_states["self_attn_out"] = self_attn_out.copy()
+
+        cross_attn_out = self.cross_attn_layer(state.cross_attn_layer, self_attn_out, xkv, rngs[1], training=training)
+
+        self.debug_states["cross_attn_out"] = cross_attn_out.copy()
+
+        ff_out = self.feed_forward(state.feed_forward, cross_attn_out, rngs[2], training=training)
+
+        self.debug_states["ff_out"] = ff_out.copy()
+
+        return ff_out
+
+    def __call__(self, *args, **kwargs) -> Array:
+        return self.forward(*args, **kwargs)
+
+
+class T5CrossAttention:
+    def __init__(self, emb_size: int, n_heads: int, dropout: float=0.1, use_rel_attn_bias: bool=False):
+        self.attention = T5MultiHeadAttention(emb_size, n_heads, use_rel_attn_bias=use_rel_attn_bias, dropout=dropout)
+        self.norm = RMSNorm(emb_size, eps=1e-6)
+        self.dropout_rate = dropout
+
+    def forward(
+        self,
+        state: T5AttentionLayerState,
+        xq: Array["batch_size, tgt_len, emb_size"],
+        xkv: Array["batch_size, src_len, emb_size"],
+        rng: Array,
+        training: bool=False,
+    ) -> Array["batch_size, tgt_len, emb_size"]:
+        xq_normed = self.norm(state.norm, xq)
+        
+        rngs = random.split(rng, 2)
+
+        attn_out = self.attention(
+            state.attention,
+            xq_normed,
+            xkv,
+            xkv,
+            rng=rngs[0],
+            training=training
+        )
+
+        return xq + dropout(attn_out, self.dropout_rate, rngs[1], training)
+
+    def __call__(self, *args, **kwargs) -> Array:
+        return self.forward(*args, **kwargs)
+        
+
+class T5SelfAttention:
+    def __init__(self, emb_size: int, n_heads: int, dropout: float=0.1, use_rel_attn_bias: bool=False, bidirectional: bool=True):
+        self.attention = T5MultiHeadAttention(emb_size, n_heads, use_rel_attn_bias, dropout=dropout, bidirectional=bidirectional)
+        self.norm = RMSNorm(emb_size, eps=1e-06)
+        self.dropout_rate = dropout
+
+    def forward(
+        self,
+        state: T5AttentionLayerState,
+        x: Array["batch_size, context_len, emb_size"],
+        rng: Array,
+        training: bool=False,
+    ) -> Array["batch_size, context_len, emb_size"]:
+        x_normed = self.norm(state.norm, x)
+
+        rngs = random.split(rng, 2)
+
+        attn_out = self.attention(
+            state.attention,
+            x_normed,
+            x_normed,
+            x_normed,
+            rng=rngs[0],
+            training=training
+        )
+        
+        return x + dropout(attn_out, self.dropout_rate, rngs[1], training)
+
+    def __call__(self, *args, **kwargs) -> Array:
+        return self.forward(*args, **kwargs)
+
 class T5MultiHeadAttention:
     def __init__(
         self, 
@@ -31,7 +190,10 @@ class T5MultiHeadAttention:
         rel_attn_n_buckets: int=32,
         rel_attn_max_distance: int=128,
         dropout: float=0.1,
+        bidirectional: bool=True
     ):
+        
+        # TODO: Add masking
 
         self.n_heads = n_heads
         self.emb_size = emb_size
@@ -49,10 +211,12 @@ class T5MultiHeadAttention:
         self.use_rel_attn_bias = use_rel_attn_bias
         self.rel_attn_n_buckets = rel_attn_n_buckets
         self.rel_attn_max_distance = rel_attn_max_distance
-        self.dropout = dropout
+        self.dropout_rate = dropout
 
         if self.use_rel_attn_bias:
             self.pos_emb = Embedding(self.rel_attn_n_buckets, self.n_heads)
+
+        self.bidirectional = bidirectional
 
         self.debug_states = dict()
 
@@ -170,7 +334,7 @@ class T5MultiHeadAttention:
 
         self.debug_states["attn_weights"] = attn_weights.copy()
 
-        attn_weights = dropout(attn_weights, self.dropout, rng, training)
+        attn_weights = dropout(attn_weights, self.dropout_rate, rng, training)
 
         self.debug_states["attn_weights_dropout"] = attn_weights.copy()
 
@@ -225,6 +389,7 @@ class T5MultiHeadAttention:
             relative_pos,
             n_buckets=self.rel_attn_n_buckets,
             max_distance=self.rel_attn_max_distance,
+            bidirectional=self.bidirectional
         )
 
         values = self.pos_emb(pos_emb_state, relative_pos_bucket)
@@ -233,9 +398,11 @@ class T5MultiHeadAttention:
         return values
 
     def _calc_bucket(
-        self, relative_pos: Array["q_len, k_len"], 
+        self, 
+        relative_pos: Array["q_len, k_len"], 
         n_buckets: int=32, 
-        max_distance: int=128
+        max_distance: int=128,
+        bidirectional: bool=True
     ) -> Array["q_len, k_len"]:
 
         # for each index in relative_pos, return which bucket it corresponds to.
@@ -243,9 +410,12 @@ class T5MultiHeadAttention:
 
         rel_buckets = 0
         # assume bidirectional
-        n_buckets //= 2
-        rel_buckets += (relative_pos > 0).astype(jnp.int32) * n_buckets
-        relative_pos = jnp.abs(relative_pos)
+        if bidirectional:
+            n_buckets //= 2
+            rel_buckets += (relative_pos > 0).astype(jnp.int32) * n_buckets
+            relative_pos = jnp.abs(relative_pos)
+        else:
+            relative_pos = -jnp.minimum(relative_pos, jnp.zeros_like(relative_pos))
 
         max_exact = n_buckets // 2
         is_small = relative_pos < max_exact
