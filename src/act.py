@@ -1,7 +1,7 @@
 import jax.numpy as jnp
 import jax
 from states import SnakeState
-from jax import Array
+from base import BaseModule, Array
 
 
 # Naive
@@ -74,7 +74,7 @@ def dropout(x: Array, prob: float, rng: Array, training: bool = True) -> Array:
 
 
 # https://arxiv.org/abs/2006.08195
-class Snake:
+class Snake(BaseModule):
     def __init__(self, n_in: int, training: bool = False):
         self.n_in = n_in
         self.training = training
@@ -84,8 +84,5 @@ class Snake:
         a = 0.1 * jax.random.exponential(rng, (self.n_in,))
         return SnakeState(a)
 
-    def __call__(self, state: Array, x: Array) -> Array:
-        return self._forward(x, state.a)
-
-    def _forward(self, x: Array, a: Array) -> Array:
-        return x + (1.0 / a) * jnp.power(jnp.sin(a * x), 2)
+    def forward(self, state: SnakeState, x: Array) -> Array:
+        return x + (1.0 / state.a) * jnp.power(jnp.sin(state.a * x), 2)

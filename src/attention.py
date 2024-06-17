@@ -1,14 +1,15 @@
 import jax.numpy as jnp
 import jax
-from jax import random, vmap, Array
+from jax import random, vmap
 from typing import Callable, Union
 from log_utils import logger
 from act import *
 from states import *
 from functools import lru_cache
 
+from base import BaseModule, Array
 
-class BatchNorm1d:
+class BatchNorm1d(BaseModule):
     def __init__(self, dims: int):
         # dims: N, input dims aka number of input features
         self.dims = dims
@@ -48,11 +49,6 @@ class BatchNorm1d:
 
         return state.gamma * x_norm + state.beta, new_state
 
-    def __call__(
-        self, state: BatchNormState, x: Array, training: bool = True, eps: float = 1e-5
-    ) -> tuple[Array, BatchNormState]:
-        return self.forward(state, x, training, eps)
-
     def init_state(self, rng: Array = None) -> BatchNormState:
         return BatchNormState(
             mean=jnp.array(0),
@@ -64,7 +60,7 @@ class BatchNorm1d:
 
 
 # (context_len, batch_size, emb_dim)
-class LayerNorm:
+class LayerNorm(BaseModule):
     def __init__(self, norm_dims: Union[tuple[int, ...], int], eps=1e-5):
         assert isinstance(
             norm_dims, (tuple, int)
@@ -106,12 +102,8 @@ class LayerNorm:
         x_norm = (x - means) / jnp.sqrt(vars + self.eps)
         return state.gamma * x_norm + state.beta
 
-    def __call__(self, state: LayerNormState, x: Array) -> Array:
-        # TODO: Vectorize with vmap
-        return self.forward(state, x)
 
-
-class RMSNorm:
+class RMSNorm(BaseModule):
     def __init__(self, norm_dims: int, eps=1e-5):
         self.norm_dim = norm_dims  # size of last dim to normalize over
         self.eps = eps
@@ -125,11 +117,8 @@ class RMSNorm:
         rms = jnp.sqrt(jnp.mean(x**2, axis=-1, keepdims=True))
         return x / (rms + self.eps) * state.gamma
 
-    def __call__(self, state: RMSNormState, x: Array) -> Array:
-        return self.forward(state, x)
 
-
-class Linear:
+class Linear(BaseModule):
     def __init__(self, n_in: int, n_out: int, bias: bool = True, batch_dim: int = 0):
         self.n_in = n_in
         self.n_out = n_out
@@ -150,16 +139,17 @@ class Linear:
         )
         return LinearState(w, b)
 
+    # TODO: Rewrite
     def __call__(self, state: LinearState, x: Array) -> Array:
         """
         Batched forward pass along batch_dim
         """
         if x.ndim > 1:
-            return jax.vmap(self._forward, in_axes=(None, self.batch_dim))(state, x)
+            return jax.vmap(self.forward, in_axes=(None, self.batch_dim))(state, x)
         else:
-            return self._forward(state, x)
+            return self.forward(state, x)
 
-    def _forward(self, state: LinearState, x: Array) -> Array:
+    def forward(self, state: LinearState, x: Array) -> Array:
         """
         Non-batched forward pass
 
@@ -170,7 +160,7 @@ class Linear:
         return dot + state.bias if self.bias else dot
 
 
-class FeedForward:
+class FeedForward(BaseModule):
     def __init__(
         self, n_in: int, d_ff: int, act: Callable = relu, dropout: float = 0.0
     ):
@@ -186,7 +176,7 @@ class FeedForward:
             self.layer2.init_state(rng2),
         )
 
-    def __call__(
+    def forward(
         self, state: FeedForwardState, x: Array, rng: Array, training=True
     ) -> Array:
         x = self.act(self.layer1(state.linear1, x))
@@ -194,7 +184,7 @@ class FeedForward:
         return self.layer2(state.linear2, x)
 
 
-class Embedding:
+class Embedding(BaseModule):
     """
     Learned lookup embeddings of size (n_embeddings, emb_size).
     Assumes that the input is a sequence of indices corresponding to items in vocabulary.
@@ -204,7 +194,7 @@ class Embedding:
         self.n_embeddings = n_embeddings
         self.emb_size = emb_size
 
-    def __call__(self, state: EmbeddingState, indices: Array) -> Array:
+    def forward(self, state: EmbeddingState, indices: Array) -> Array:
         # indices.shape:            (*,), e.g. (context_len, batch_size)
         # output.shape:             (*, emb_size)
         # state.embeddings.shape:   (vocab_size, emb_size)
@@ -217,7 +207,7 @@ class Embedding:
         )
 
 
-class PreAttention:
+class PreAttention(BaseModule):
     """
     Linear layer transforming input to query, key or value
     """
@@ -244,6 +234,7 @@ class PreAttention:
     def init_state(self, rng: Array) -> LinearState:
         return self.dense.init_state(rng)
 
+    # TODO: Rewrite
     def __call__(self, weight_matrix: Array, x: Array) -> Array:
         # Batch batch_dim of x.shape: (context_len, batch_size, emd_size)
         if x.ndim > 3:
@@ -269,7 +260,7 @@ def create_causal_mask(tgt_len: int, src_len: int = None) -> Array:
     return jnp.triu(jnp.ones((tgt_len, src_len), dtype=bool), k=1)
 
 
-class MultiHeadAttention:
+class MultiHeadAttention(BaseModule):
     """
     Attention with n_heads heads
     """
@@ -453,11 +444,8 @@ class MultiHeadAttention:
         # kv_cache.shape: ((src_len, batch_size, n_heads, d_k), *)
         return (out, kv_cache) if use_cache else out
 
-    def __call__(self, *args, **kwargs) -> Array:
-        return self.forward(*args, **kwargs)
 
-
-class PositionalEncoding:
+class PositionalEncoding(BaseModule):
     def __init__(self, emb_size: int, dropout: float = 0.0, max_len: int = 5000):
         self.emb_size = emb_size
         self.dropout = dropout
@@ -479,7 +467,7 @@ class PositionalEncoding:
         pe = pe.at[:, 0, 1::2].set(jnp.cos(position * div_term))
         return pe
 
-    def __call__(self, x: Array, rng: Array, training: bool = True) -> Array:
+    def forward(self, x: Array, rng: Array, training: bool = True) -> Array:
         # x.shape: (context_len, batch_size, embed_dim)
         assert (
             len(x.shape) == 3

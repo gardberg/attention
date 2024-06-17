@@ -3,7 +3,7 @@ from attention import *
 from jax import Array
 
 
-class EncoderLayer:
+class EncoderLayer(BaseModule):
     """
     Norm-first Transformer encoder layer
     """
@@ -18,7 +18,7 @@ class EncoderLayer:
         self.feed_forward = FeedForward(emb_size, d_ff)
         self.dropout = dropout
 
-    def __call__(
+    def forward(
         self,
         state: EncoderLayerState,
         src: Array,
@@ -56,7 +56,7 @@ class EncoderLayer:
         )
 
 
-class Encoder:
+class Encoder(BaseModule):
     """
     Transformer Encoder
     """
@@ -73,7 +73,7 @@ class Encoder:
         self.layers = [encoder_layer for _ in range(n_layers)]
         self.norm = norm
 
-    def __call__(
+    def forward(
         self,
         state: EncoderState,
         src: Array,
@@ -103,7 +103,7 @@ class Encoder:
         )
 
 
-class DecoderLayer:
+class DecoderLayer(BaseModule):
     def __init__(
         self, emb_size: int, n_heads: int, d_ff: int = 2048, dropout: float = 0.0
     ):
@@ -118,7 +118,7 @@ class DecoderLayer:
 
         self.dropout = dropout
 
-    def __call__(
+    def forward(
         self,
         state: DecoderLayerState,
         tgt: Array,
@@ -167,7 +167,7 @@ class DecoderLayer:
         )
 
 
-class Decoder:
+class Decoder(BaseModule):
     def __init__(
         self, decoder_layer: DecoderLayer, n_layers: int, norm: LayerNorm = None
     ):
@@ -175,7 +175,7 @@ class Decoder:
         self.layers = [decoder_layer for _ in range(n_layers)]
         self.norm = norm
 
-    def __call__(
+    def forward(
         self,
         state: DecoderState,
         tgt: Array,
@@ -209,7 +209,7 @@ class Decoder:
         )
 
 
-class Transformer:
+class Transformer(BaseModule):
     """
     Norm-first Encoder-decoder Transformer
     input: (tgt_len, batch_size, emb_size) ->
@@ -237,7 +237,7 @@ class Transformer:
             LayerNorm(emb_size),
         )
 
-    def __call__(
+    def forward(
         self,
         state: TransformerState,
         src: Array,
@@ -273,7 +273,7 @@ class Transformer:
         )
 
 
-class Seq2SeqTransformer:
+class Seq2SeqTransformer(BaseModule):
     """
     Sequence to Sequence Transformer model, e.g. for machine translation
     https://pytorch.org/tutorials/beginner/translation_transformer.html
@@ -302,7 +302,7 @@ class Seq2SeqTransformer:
         tgt_emb = self.tgt_embedding(state, tgt) * jnp.sqrt(self.emb_size)
         return self.encode_position(tgt_emb, rng)
 
-    def __call__(
+    def forward(
         self,
         state: Seq2SeqTransformerState,
         src_toks: Array,
