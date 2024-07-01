@@ -7,16 +7,50 @@ import jax.numpy as jnp
 
 from attention import Embedding, RMSNorm, Linear, create_causal_mask
 from act import relu, dropout, softmax
-from states import T5DenseState, T5FeedForwardState, T5MultiHeadAttentionState, EmbeddingState, LinearState, T5AttentionLayerState, T5EncoderBlockState, T5DecoderBlockState, T5EncoderState, T5DecoderState
+from states import T5DenseState, T5FeedForwardState, T5MultiHeadAttentionState, EmbeddingState, LinearState, T5AttentionLayerState, T5EncoderBlockState, T5DecoderBlockState, T5EncoderState, T5DecoderState, T5BaseModelState, T5ModelState
 from base import Array, BaseModule
 
 # https://github.com/huggingface/transformers/blob/e4ea19b958c89d61e42461fac6ac8441787121f8/src/transformers/models/t5/modeling_t5.py#L646
 
+
 class T5Model(BaseModule):
     def __init__(self, vocab_size: int, emb_size: int):
-        self.shared_embedding = Embedding(vocab_size, emb_size) 
-        self.encoder = None
-        self.decoder = None
+        self.base_model = T5BaseModel(vocab_size, emb_size)
+        self.lm_head = Linear(emb_size, vocab_size, bias=False)
+
+    def forward(
+        self,
+        state: T5ModelState,
+        input_ids: Array["batch_size, context_len"],
+        decoder_input_ids: Array["batch_size, tgt_len"],
+        rng: Array
+    ) -> Array:
+        # TODO: How do we deal with decoder_input_ids being None, which it should be during
+        # the start of generation? Or do we start with a specific fixed token?
+        # <pad>? Can't find in paper or HF code
+        pass
+        
+
+class T5BaseModel(BaseModule):
+    def __init__(self, vocab_size: int, emb_size: int, n_layers: int=6):
+        # Embedding layer weights are shared between encode and decoder
+        self.encoder = T5Encoder(emb_size, n_layers, vocab_size)
+        self.decoder = T5Decoder(emb_size, n_layers, vocab_size)
+
+    def forward(
+        self,
+        state: T5BaseModelState,
+        input_ids: Array["batch_size, context_len"], # context, e.g. source language to transle
+        decoder_input_ids: Array["batch_size, tgt_len"], # start of translation, e.g. "Translate English to French: "
+        rng: Array,
+    ) -> Array:
+        # Returns logits to be used by lm head
+        rngs = random.split(rng, 2)
+        
+        encoder_output = self.encoder(state.encoder, input_ids, rngs[0])
+        decoder_output = self.decoder(state.decoder, decoder_input_ids, encoder_output, rngs[1])
+
+        return decoder_output
 
 
 # T5Stack with encoder config

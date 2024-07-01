@@ -5,6 +5,7 @@ import copy
 import torch
 import jax.numpy as jnp
 from transformers.models.t5.modeling_t5 import T5DenseActDense, T5LayerFF, T5Attention, T5LayerSelfAttention, T5LayerCrossAttention, T5Block, T5Stack
+from transformers.models.t5.modeling_t5 import T5Model as TorchT5Model
 from pytest import fixture, mark
 from huggingface_hub import hf_hub_download
 import jax
@@ -12,14 +13,15 @@ import jax
 from utils import ROOT_DIR, count_params, torch_count_params
 from testing_utils import TOL
 from transformers.models.t5 import T5Config
-from t5 import T5Dense, T5FeedForward, T5MultiHeadAttention, T5SelfAttention, T5CrossAttention, T5EncoderBlock, T5DecoderBlock, T5Encoder, T5Decoder
+from t5 import T5Dense, T5FeedForward, T5MultiHeadAttention, T5SelfAttention, T5CrossAttention, T5EncoderBlock, T5DecoderBlock, T5Encoder, T5Decoder, T5BaseModel
 from states import to_jax_state
 from log_utils import logger
+
+T5_REPO = "google-t5/t5-small"
 
 @fixture
 def t5_config() -> T5Config:
 
-    T5_REPO = "google-t5/t5-small"
     CONFIG_NAME = "config.json"
 
     t5_config_path = hf_hub_download(repo_id=T5_REPO, filename=CONFIG_NAME)
@@ -375,3 +377,52 @@ def test_t5_decoder(t5_config):
     # Not sure.
     print(f"{torch_out.numpy()[0,0,:5]}\n{jax_out[0,0,:5]}")
     assert jnp.allclose(torch_out.numpy(), jax_out, atol=TOL)
+
+
+@mark.parametrize("use_pretrained", [True, False])
+def test_t5_model(t5_config, use_pretrained):
+    input_ids = torch.randint(0, t5_config.vocab_size, (BATCH_SIZE, SEQ_LEN)) 
+    decoder_input_ids = torch.randint(0, t5_config.vocab_size, (BATCH_SIZE, SEQ_LEN))
+
+    shared_emb = torch.nn.Embedding(t5_config.vocab_size, t5_config.d_model)
+
+    if use_pretrained:
+        torch_t5_model = TorchT5Model.from_pretrained(T5_REPO)
+    else:
+        torch_t5_model = TorchT5Model(t5_config).eval()
+        torch_t5_model.set_input_embeddings(shared_emb)
+
+    with torch.no_grad():
+        torch_out = torch_t5_model(input_ids, decoder_input_ids=decoder_input_ids)
+
+    torch_out = torch_out.last_hidden_state
+
+    # Jax
+    rng = jax.random.PRNGKey(0)
+    input_ids_jax = jnp.array(input_ids.detach().numpy())
+    decoder_input_ids_jax = jnp.array(decoder_input_ids.detach().numpy())
+    
+    jax_t5_model = T5BaseModel(
+        emb_size=t5_config.d_model,
+        n_layers=t5_config.num_layers,
+        vocab_size=t5_config.vocab_size
+    )
+
+    state = to_jax_state(torch_t5_model)
+
+    nbr_torch_params = torch_count_params(torch_t5_model)
+    nbr_jax_params = count_params(state)
+
+    # We're counting embedding params twice, once for encoder, once for decoder
+    nbr_emb_params = state.encoder.embedding.embeddings.size
+    nbr_expected_params = nbr_jax_params - nbr_emb_params
+
+    assert nbr_torch_params == nbr_expected_params, f"{nbr_torch_params} != {nbr_expected_params}"
+
+    jax_out = jax_t5_model(state, input_ids_jax, decoder_input_ids_jax, rng)
+
+    assert torch_out.shape == jax_out.shape, f"{torch_out.shape} != {jax_out.shape}"
+    print(f"{torch_out.numpy()[0,0,:5]}\n{jax_out[0,0,:5]}")
+    assert jnp.allclose(torch_out.numpy(), jax_out, atol=TOL)
+        
+    

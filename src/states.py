@@ -2,7 +2,8 @@ from typing import NamedTuple, TypeVar, Type
 import jax
 from jax import Array
 import jax.numpy as jnp
-from transformers.models.t5.modeling_t5 import T5DenseActDense, T5LayerFF, T5Attention, T5LayerSelfAttention, T5LayerCrossAttention, T5Block, T5Stack
+from transformers.models.t5.modeling_t5 import T5DenseActDense, T5LayerFF, T5Attention, T5LayerSelfAttention, T5LayerCrossAttention, T5Block, T5Stack, T5Model, T5ForConditionalGeneration
+
 
 from torch import nn
 
@@ -135,6 +136,16 @@ class T5DecoderState(NamedTuple):
     embedding: EmbeddingState # Shared with T5Encoder
     blocks: list[T5DecoderBlockState]
     norm: RMSNormState
+
+
+class T5BaseModelState(NamedTuple):
+    encoder: T5EncoderState
+    decoder: T5DecoderState
+
+
+class T5ModelState(NamedTuple):
+    base_model: T5BaseModelState
+    lm_head: LinearState
 
 
 # TODO: Move into separate file
@@ -298,6 +309,22 @@ def to_jax_state(module: nn.Module) -> Type[NamedTupleSubclass]:
                 blocks=[to_jax_state(block) for block in module.block],
                 norm=RMSNormState(jnp.array(module.final_layer_norm.weight.detach())),
             )  
+
+    elif isinstance(module, T5Model):
+        # Assumes shared embedding is already set in T5Model via self.set_input_embeddings
+        return T5BaseModelState(
+            encoder=to_jax_state(module.encoder),
+            decoder=to_jax_state(module.decoder),
+        )
+
+    elif isinstance(module, T5ForConditionalGeneration):
+        return T5ModelState(
+            base_model=T5BaseModelState(
+                encoder=to_jax_state(module.model.encoder),
+                decoder=to_jax_state(module.model.decoder),
+            ),
+            lm_head=to_jax_state(module.lm_head),
+        )
 
     else:
         raise NotImplementedError(
