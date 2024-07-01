@@ -45,7 +45,7 @@ If the same key is split in two different places, does it result in the same sub
 - [x] Add tests to compare with pytorch implementations
 - [x] Simplify logging
 - [ ] Switch to __name__ logging
-- [ ] Switch to using single Array type for shape hinting
+- [x] Switch to using single Array type for shape hinting
 
 #### Transformer
 

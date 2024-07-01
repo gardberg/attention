@@ -2,7 +2,7 @@ from typing import NamedTuple, TypeVar, Type
 import jax
 from jax import Array
 import jax.numpy as jnp
-from transformers.models.t5.modeling_t5 import T5DenseActDense, T5LayerFF, T5Attention, T5LayerSelfAttention, T5LayerCrossAttention, T5Block
+from transformers.models.t5.modeling_t5 import T5DenseActDense, T5LayerFF, T5Attention, T5LayerSelfAttention, T5LayerCrossAttention, T5Block, T5Stack
 
 from torch import nn
 
@@ -123,6 +123,18 @@ class T5DecoderBlockState(NamedTuple):
     self_attn_layer: T5AttentionLayerState
     cross_attn_layer: T5AttentionLayerState
     feed_forward: T5FeedForwardState
+
+
+class T5EncoderState(NamedTuple):
+    embedding: EmbeddingState # Shared with T5Decoder
+    blocks: list[T5EncoderBlockState]
+    norm: RMSNormState
+
+
+class T5DecoderState(NamedTuple):
+    embedding: EmbeddingState # Shared with T5Encoder
+    blocks: list[T5DecoderBlockState]
+    norm: RMSNormState
 
 
 # TODO: Move into separate file
@@ -272,6 +284,20 @@ def to_jax_state(module: nn.Module) -> Type[NamedTupleSubclass]:
                 self_attn_layer=to_jax_state(module.layer[0]),
                 feed_forward=to_jax_state(module.layer[-1]),
             )
+
+    elif isinstance(module, T5Stack) or module.__class__.__name__ == "T5Stack":
+        if module.is_decoder:
+            return T5DecoderState(
+                embedding=to_jax_state(module.embed_tokens),
+                blocks=[to_jax_state(block) for block in module.block],
+                norm=RMSNormState(jnp.array(module.final_layer_norm.weight.detach())),
+            )
+        else:
+            return T5EncoderState(
+                embedding=to_jax_state(module.embed_tokens),
+                blocks=[to_jax_state(block) for block in module.block],
+                norm=RMSNormState(jnp.array(module.final_layer_norm.weight.detach())),
+            )  
 
     else:
         raise NotImplementedError(

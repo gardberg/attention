@@ -316,7 +316,6 @@ class MultiHeadAttention(BaseModule):
         # creates a causal mask of shape (tgt_len, src_len, batch_size, n_heads)
         # mask[i, j, ...] = true -> i can not attend to j
         base_mask = create_causal_mask(tgt_len, src_len=src_len)
-        print(f"Created mask: {base_mask.shape}")
 
         # tile into shape (tgt_len, src_len, batch_size, n_heads)
         return self._get_mask_batched(base_mask, batch_size, self.n_heads)

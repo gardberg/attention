@@ -4,15 +4,15 @@ import copy
 
 import torch
 import jax.numpy as jnp
-from transformers.models.t5.modeling_t5 import T5DenseActDense, T5LayerFF, T5Attention, T5LayerSelfAttention, T5LayerCrossAttention, T5Block
+from transformers.models.t5.modeling_t5 import T5DenseActDense, T5LayerFF, T5Attention, T5LayerSelfAttention, T5LayerCrossAttention, T5Block, T5Stack
 from pytest import fixture, mark
 from huggingface_hub import hf_hub_download
 import jax
 
-from utils import ROOT_DIR
+from utils import ROOT_DIR, count_params, torch_count_params
 from testing_utils import TOL
 from transformers.models.t5 import T5Config
-from t5 import T5Dense, T5FeedForward, T5MultiHeadAttention, T5SelfAttention, T5CrossAttention, T5EncoderBlock, T5DecoderBlock
+from t5 import T5Dense, T5FeedForward, T5MultiHeadAttention, T5SelfAttention, T5CrossAttention, T5EncoderBlock, T5DecoderBlock, T5Encoder, T5Decoder
 from states import to_jax_state
 from log_utils import logger
 
@@ -267,6 +267,9 @@ def test_t5_decoder_block(t5_config, use_rel_attn_bias):
     with torch.no_grad():
         torch_out, kv_states, pos_bias = torch_t5_block(xq, encoder_hidden_states=xkv)
 
+    # import code; code.interact(local=locals())
+    # pos_bias: (1, n_heads, tgt_len, src_len)
+
     # Jax
     rng = jax.random.PRNGKey(0)
     xq_jax = jnp.array(xq.detach().numpy())
@@ -280,9 +283,95 @@ def test_t5_decoder_block(t5_config, use_rel_attn_bias):
 
     state = to_jax_state(torch_t5_block)
 
-    jax_out = jax_t5_block(state, xq_jax, xkv_jax, rng, training=False)
+    jax_out, self_pos_bias, cross_pos_bias = jax_t5_block(state, xq_jax, xkv_jax, rng, training=False, output_pos_bias=True)
 
-    print(torch_out.shape, jax_out.shape)
     assert torch_out.shape == jax_out.shape
-    print(torch_out.numpy()[0, 0, :5], jax_out[0, 0, :5])
+
+    assert jnp.allclose(pos_bias.numpy(), cross_pos_bias, atol=TOL)
+    assert jnp.allclose(torch_out.numpy(), jax_out, atol=TOL)
+
+def test_t5_encoder(t5_config):
+    t5_config = copy.deepcopy(t5_config)
+    t5_config.is_decoder = False
+    t5_config.use_cache = False
+    t5_config.is_encoder_decoder = False
+    t5_config.output_attentions = False
+
+    input_ids = torch.randint(0, t5_config.vocab_size, (BATCH_SIZE, SEQ_LEN))
+
+    shared_emb = torch.nn.Embedding(t5_config.vocab_size, t5_config.d_model)
+
+    torch_t5_encoder = T5Stack(t5_config, embed_tokens=shared_emb).eval()
+    with torch.no_grad():
+        torch_out = torch_t5_encoder(input_ids)
+
+    torch_out = torch_out.last_hidden_state
+
+    # Jax
+    rng = jax.random.PRNGKey(0)
+    input_ids_jax = jnp.array(input_ids.detach().numpy())
+
+    jax_t5_encoder = T5Encoder(
+        emb_size=t5_config.d_model,
+        n_layers=t5_config.num_layers, 
+        vocab_size=t5_config.vocab_size
+    )
+
+    state = to_jax_state(torch_t5_encoder)
+
+    # (batch_size, seq_len, emb_size)
+    jax_out = jax_t5_encoder(state, input_ids_jax, rng, training=False)
+    # import code; code.interact(local=locals())
+
+    # count params
+    assert torch_count_params(torch_t5_encoder) == count_params(state), f"{torch_count_params(torch_t5_encoder)} != {count_params(state)}"
+
+    assert torch_out.shape == jax_out.shape, f"{torch_out.shape} != {jax_out.shape}"
+    # print(f"{torch_out.numpy()[0,0,:5]}\n{jax_out[0,0,:5]}")
+    assert jnp.allclose(torch_out.numpy(), jax_out, atol=TOL)
+
+
+def test_t5_decoder(t5_config):
+    t5_config = copy.deepcopy(t5_config)
+    t5_config.is_decoder = True
+    t5_config.is_encoder_decoder = False
+    t5_config.use_cache = False
+    t5_config.output_attentions = False
+    t5_config.num_layers = t5_config.num_decoder_layers
+
+    input_ids = torch.randint(0, t5_config.vocab_size, (BATCH_SIZE, SEQ_LEN))
+    encoder_hidden_states = torch.randn((BATCH_SIZE, SEQ_LEN + 1, EMBED_SIZE))
+    
+    shared_emb = torch.nn.Embedding(t5_config.vocab_size, t5_config.d_model)
+
+    torch_t5_decoder = T5Stack(t5_config, embed_tokens=shared_emb).eval()
+    with torch.no_grad():
+        torch_out = torch_t5_decoder(input_ids, encoder_hidden_states=encoder_hidden_states)
+
+    torch_out = torch_out.last_hidden_state
+
+    # Jax
+    rng = jax.random.PRNGKey(0)
+    input_ids_jax = jnp.array(input_ids.detach().numpy())
+    encoder_hidden_states_jax = jnp.array(encoder_hidden_states.detach().numpy())
+    
+    jax_t5_decoder = T5Decoder(
+        emb_size=t5_config.d_model,
+        n_layers=t5_config.num_layers,
+        vocab_size=t5_config.vocab_size
+    )
+
+    state = to_jax_state(torch_t5_decoder)
+
+    assert torch_count_params(torch_t5_decoder) == count_params(state), f"{torch_count_params(torch_t5_decoder)} != {count_params(state)}"
+
+    # import code; code.interact(local=locals())
+    jax_out = jax_t5_decoder(state, input_ids_jax, encoder_hidden_states_jax, rng)
+    
+    assert torch_out.shape == jax_out.shape, f"{torch_out.shape} != {jax_out.shape}"
+
+    # TODO: Failing for decoder. Might be how we use the two pos biases
+    # from cross and self attention in the forward pass.
+    # Not sure.
+    print(f"{torch_out.numpy()[0,0,:5]}\n{jax_out[0,0,:5]}")
     assert jnp.allclose(torch_out.numpy(), jax_out, atol=TOL)
