@@ -6,6 +6,8 @@ import torch
 import jax.numpy as jnp
 from transformers.models.t5.modeling_t5 import T5DenseActDense, T5LayerFF, T5Attention, T5LayerSelfAttention, T5LayerCrossAttention, T5Block, T5Stack
 from transformers.models.t5.modeling_t5 import T5Model as TorchT5Model
+from transformers.models.t5.modeling_t5 import T5ForConditionalGeneration as TorchT5ForConditionalGeneration
+from transformers.models.t5 import T5Tokenizer
 from pytest import fixture, mark
 from huggingface_hub import hf_hub_download
 import jax
@@ -13,7 +15,7 @@ import jax
 from utils import ROOT_DIR, count_params, torch_count_params
 from testing_utils import TOL
 from transformers.models.t5 import T5Config
-from t5 import T5Dense, T5FeedForward, T5MultiHeadAttention, T5SelfAttention, T5CrossAttention, T5EncoderBlock, T5DecoderBlock, T5Encoder, T5Decoder, T5BaseModel
+from t5 import T5Dense, T5FeedForward, T5MultiHeadAttention, T5SelfAttention, T5CrossAttention, T5EncoderBlock, T5DecoderBlock, T5Encoder, T5Decoder, T5BaseModel, T5Model
 from states import to_jax_state
 from log_utils import logger
 
@@ -372,15 +374,12 @@ def test_t5_decoder(t5_config):
     
     assert torch_out.shape == jax_out.shape, f"{torch_out.shape} != {jax_out.shape}"
 
-    # TODO: Failing for decoder. Might be how we use the two pos biases
-    # from cross and self attention in the forward pass.
-    # Not sure.
     print(f"{torch_out.numpy()[0,0,:5]}\n{jax_out[0,0,:5]}")
     assert jnp.allclose(torch_out.numpy(), jax_out, atol=TOL)
 
 
 @mark.parametrize("use_pretrained", [True, False])
-def test_t5_model(t5_config, use_pretrained):
+def test_t5_base_model(t5_config, use_pretrained):
     input_ids = torch.randint(0, t5_config.vocab_size, (BATCH_SIZE, SEQ_LEN)) 
     decoder_input_ids = torch.randint(0, t5_config.vocab_size, (BATCH_SIZE, SEQ_LEN))
 
@@ -419,10 +418,131 @@ def test_t5_model(t5_config, use_pretrained):
 
     assert nbr_torch_params == nbr_expected_params, f"{nbr_torch_params} != {nbr_expected_params}"
 
-    jax_out = jax_t5_model(state, input_ids_jax, decoder_input_ids_jax, rng)
+    jax_out, _enc_out = jax_t5_model(state, input_ids_jax, decoder_input_ids_jax, rng)
 
     assert torch_out.shape == jax_out.shape, f"{torch_out.shape} != {jax_out.shape}"
     print(f"{torch_out.numpy()[0,0,:5]}\n{jax_out[0,0,:5]}")
     assert jnp.allclose(torch_out.numpy(), jax_out, atol=TOL)
+
+    
+@mark.parametrize("use_pretrained", [True, False])
+def test_t5_base_model_encoder(t5_config, use_pretrained):
+    # Using pre-computed encoder output
+    input_ids = torch.randint(0, t5_config.vocab_size, (BATCH_SIZE, SEQ_LEN))
+    decoder_input_ids = torch.randint(0, t5_config.vocab_size, (BATCH_SIZE, SEQ_LEN))
+    encoder_hidden_states = torch.randn((BATCH_SIZE, SEQ_LEN, EMBED_SIZE))
+
+
+    if use_pretrained:
+        torch_t5_model = TorchT5Model.from_pretrained(T5_REPO)
+    else:
+        shared_emb = torch.nn.Embedding(t5_config.vocab_size, t5_config.d_model)
+        torch_t5_model = TorchT5Model(t5_config).eval()
+        torch_t5_model.set_input_embeddings(shared_emb)
+
+    with torch.no_grad():
+        torch_out = torch_t5_model(
+            input_ids,
+            decoder_input_ids=decoder_input_ids,
+            encoder_outputs=encoder_hidden_states.unsqueeze(0)) # add weird dim to make work with HF output dict wrapping
+
+    torch_out = torch_out.last_hidden_state
+
+    # Jax
+    rng = jax.random.PRNGKey(0)
+    input_ids_jax = jnp.array(input_ids.detach().numpy())
+    decoder_input_ids_jax = jnp.array(decoder_input_ids.detach().numpy())
+    encoder_hidden_states_jax = jnp.array(encoder_hidden_states.detach().numpy())
+    
+    jax_t5_model = T5BaseModel(
+        emb_size=t5_config.d_model,
+        n_layers=t5_config.num_layers,
+        vocab_size=t5_config.vocab_size
+    )
+
+    state = to_jax_state(torch_t5_model)
+
+    jax_out, _enc_out = jax_t5_model(
+        state, input_ids_jax, decoder_input_ids_jax, rng, encoder_output=encoder_hidden_states_jax)
+
+    assert torch_out.shape == jax_out.shape, f"{torch_out.shape} != {jax_out.shape}"
+    assert jnp.allclose(torch_out.numpy(), jax_out, atol=TOL)
         
     
+@mark.parametrize("use_pretrained", [True, False])
+def test_t5_model(t5_config, use_pretrained):
+    input_ids = torch.randint(0, t5_config.vocab_size, (BATCH_SIZE, SEQ_LEN)) 
+    decoder_input_ids = torch.randint(0, t5_config.vocab_size, (BATCH_SIZE, SEQ_LEN))
+    # decoder_input_ids = torch.zeros((BATCH_SIZE, SEQ_LEN), dtype=torch.long)
+
+
+    if use_pretrained:
+        torch_t5_model = TorchT5ForConditionalGeneration.from_pretrained(T5_REPO)
+    else:
+        shared_emb = torch.nn.Embedding(t5_config.vocab_size, t5_config.d_model)
+        torch_t5_model = TorchT5ForConditionalGeneration(t5_config).eval()
+        torch_t5_model.set_input_embeddings(shared_emb)
+
+    with torch.no_grad():
+        torch_out = torch_t5_model(input_ids, decoder_input_ids=decoder_input_ids)
+        
+    torch_out = torch_out.logits
+    
+    # Jax
+    rng = jax.random.PRNGKey(0)
+    input_ids_jax = jnp.array(input_ids.detach().numpy())
+    decoder_input_ids_jax = jnp.array(decoder_input_ids.detach().numpy())
+    
+    jax_t5_model = T5Model(
+        vocab_size=t5_config.vocab_size,
+        emb_size=t5_config.d_model
+    )
+
+    state = to_jax_state(torch_t5_model)
+
+    jax_out, _enc_out = jax_t5_model(state, input_ids_jax, decoder_input_ids_jax, rng)
+
+    assert torch_out.shape == jax_out.shape, f"{torch_out.shape} != {jax_out.shape}"
+    
+    assert jnp.allclose(torch_out.numpy(), jax_out, atol=TOL)
+    
+
+@mark.parametrize("use_pretrained", [True, False])
+def test_t5_generation(t5_config, use_pretrained):    
+    tokenizer = T5Tokenizer.from_pretrained(T5_REPO)
+
+    TEST_SENTENCE = "translate English to French: Hello, how are you?"
+
+    input_ids = tokenizer(TEST_SENTENCE, return_tensors="pt").input_ids
+
+    # Torch
+    if use_pretrained:
+        torch_t5_model = TorchT5ForConditionalGeneration.from_pretrained(T5_REPO).eval()
+    else:
+        shared_emb = torch.nn.Embedding(t5_config.vocab_size, t5_config.d_model)
+        torch_t5_model = TorchT5ForConditionalGeneration(t5_config).eval()
+        torch_t5_model.set_input_embeddings(shared_emb)
+
+    with torch.no_grad(): 
+        torch_out = torch_t5_model.generate(input_ids, max_length=20) 
+
+    torch_out_decoded = tokenizer.decode(torch_out[0], skip_special_tokens=False)
+    logger.debug(f"use_pretrained: {use_pretrained}, torch: {torch_out_decoded}")
+
+    # Jax
+    jax_t5_model = T5Model(
+        vocab_size=t5_config.vocab_size,
+        emb_size=t5_config.d_model
+    )
+
+    state = to_jax_state(torch_t5_model)
+
+    input_ids_jnp = jnp.array(input_ids.detach().numpy())
+    rng = jax.random.PRNGKey(0)
+
+    jax_out = jax_t5_model.generate(state, input_ids_jnp, rng, max_length=20)
+
+    jax_out_decoded = tokenizer.decode(jax_out[0], skip_special_tokens=False)
+    logger.debug(f"use_pretrained: {use_pretrained}: jax: {jax_out_decoded}")
+
+    assert torch_out_decoded == jax_out_decoded, f"{torch_out_decoded} != {jax_out_decoded}"

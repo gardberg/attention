@@ -1,7 +1,7 @@
 
 # T5 translation model based on google t5-small for translation
 # takes in input ids in the form of tokens, and returns predicted tokens (for translation)
-from typing import Callable
+from typing import Callable, Optional, Tuple
 from jax import random
 import jax.numpy as jnp
 
@@ -10,25 +10,80 @@ from act import relu, dropout, softmax
 from states import T5DenseState, T5FeedForwardState, T5MultiHeadAttentionState, EmbeddingState, LinearState, T5AttentionLayerState, T5EncoderBlockState, T5DecoderBlockState, T5EncoderState, T5DecoderState, T5BaseModelState, T5ModelState
 from base import Array, BaseModule
 
+from log_utils import logger
+
 # https://github.com/huggingface/transformers/blob/e4ea19b958c89d61e42461fac6ac8441787121f8/src/transformers/models/t5/modeling_t5.py#L646
 
 
+# Corresponds to T5ForConditionalGeneration
 class T5Model(BaseModule):
     def __init__(self, vocab_size: int, emb_size: int):
         self.base_model = T5BaseModel(vocab_size, emb_size)
         self.lm_head = Linear(emb_size, vocab_size, bias=False)
+
+        self.decoder_start_token_id = 0
+        self.eos_token_id = 1
+        self.pad_token_id = 0
+
+        self.emb_size = emb_size
 
     def forward(
         self,
         state: T5ModelState,
         input_ids: Array["batch_size, context_len"],
         decoder_input_ids: Array["batch_size, tgt_len"],
-        rng: Array
-    ) -> Array:
-        # TODO: How do we deal with decoder_input_ids being None, which it should be during
-        # the start of generation? Or do we start with a specific fixed token?
-        # <pad>? Can't find in paper or HF code
-        pass
+        rng: Array,
+        encoder_output: Optional[Array["batch_size, context_len, emb_size"]] = None,
+    ) -> Tuple[Array["batch_size, tgt_len, vocab_size"], Array["batch_size, context_len, emb_size"]]:
+        # Returns logits over vocab from lm head, as well as encoder output
+
+        # enligt config.json: decoder_start_token_id = 0
+        # This means that for the first generation step, forward should be called with decoder_input_ids something like [0]
+
+        decoder_output, encoder_output = self.base_model(state.base_model, input_ids, decoder_input_ids, rng, encoder_output=encoder_output)
+        rescaled_output = decoder_output * (self.emb_size ** -0.5) # From TF Mesh implementation
+        return self.lm_head(state.lm_head, rescaled_output), encoder_output
+
+    def generate(
+        self,
+        state: T5ModelState,
+        input_ids: Array["1, context_len"],
+        rng: Array,
+        max_length: int=300,
+    ) -> Array["1, _"]:
+        # Generate translation from input_ids using beam search
+        # Returns an array of token ids of the predicted text
+        # until eather max_length of a stop token is reached
+
+        # https://huggingface.co/blog/encoder-decoder#encoder-decoder
+
+        rngs = random.split(rng, 2)
+
+        pred_token_ids = jnp.array([[self.decoder_start_token_id]])
+        
+        encoder_output = None
+        for _ in range(max_length-1):
+            
+            logits, encoder_output = self.forward(state, input_ids, pred_token_ids, rngs[0], encoder_output)
+            logits = logits[:, -1, :]
+
+            probs = softmax(logits, dim=-1)
+
+            # sample
+            # next_token_id = random.choice(rngs[1], jnp.arange(probs.shape[-1]), p=probs[0])
+            next_token_id = self.predict_next_token(probs)
+
+            pred_token_ids = jnp.concatenate([pred_token_ids, next_token_id.reshape(1, 1)], axis=1)
+
+            if next_token_id == self.eos_token_id:
+                break
+
+        return pred_token_ids
+
+        
+    def predict_next_token(self, token_probs: Array["1, vocab_size"]) -> Array["1"]:
+        return jnp.argmax(token_probs, axis=-1)
+
         
 
 class T5BaseModel(BaseModule):
@@ -43,14 +98,18 @@ class T5BaseModel(BaseModule):
         input_ids: Array["batch_size, context_len"], # context, e.g. source language to transle
         decoder_input_ids: Array["batch_size, tgt_len"], # start of translation, e.g. "Translate English to French: "
         rng: Array,
-    ) -> Array:
-        # Returns logits to be used by lm head
+        encoder_output: Optional[Array["batch_size, context_len, emb_size"]] = None,
+    ) -> Tuple[Array["batch_size, tgt_len, emb_size"], Array["batch_size, context_len, emb_size"]]:
+
         rngs = random.split(rng, 2)
         
-        encoder_output = self.encoder(state.encoder, input_ids, rngs[0])
+        if encoder_output is None:
+            logger.debug("No encoder output, running encoder")
+            encoder_output = self.encoder(state.encoder, input_ids, rngs[0])
+
         decoder_output = self.decoder(state.decoder, decoder_input_ids, encoder_output, rngs[1])
 
-        return decoder_output
+        return decoder_output, encoder_output
 
 
 # T5Stack with encoder config

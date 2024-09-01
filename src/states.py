@@ -320,8 +320,8 @@ def to_jax_state(module: nn.Module) -> Type[NamedTupleSubclass]:
     elif isinstance(module, T5ForConditionalGeneration):
         return T5ModelState(
             base_model=T5BaseModelState(
-                encoder=to_jax_state(module.model.encoder),
-                decoder=to_jax_state(module.model.decoder),
+                encoder=to_jax_state(module.encoder),
+                decoder=to_jax_state(module.decoder),
             ),
             lm_head=to_jax_state(module.lm_head),
         )
