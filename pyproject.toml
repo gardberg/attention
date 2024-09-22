@@ -23,6 +23,9 @@ transformers = "^4.39.3"
 sentencepiece = "^0.2.0"
 
 
+[tool.poetry.group.dev.dependencies]
+pytest-benchmark = "^4.0.0"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

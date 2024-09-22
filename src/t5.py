@@ -2,7 +2,7 @@
 # T5 translation model based on google t5-small for translation
 # takes in input ids in the form of tokens, and returns predicted tokens (for translation)
 from typing import Callable, Optional, Tuple
-from jax import random
+from jax import random, jit
 import jax.numpy as jnp
 
 from attention import Embedding, RMSNorm, Linear, create_causal_mask
@@ -18,6 +18,7 @@ from log_utils import logger
 # Corresponds to T5ForConditionalGeneration
 class T5Model(BaseModule):
     def __init__(self, vocab_size: int, emb_size: int):
+        super().__init__()
         self.base_model = T5BaseModel(vocab_size, emb_size)
         self.lm_head = Linear(emb_size, vocab_size, bias=False)
 
@@ -26,6 +27,9 @@ class T5Model(BaseModule):
         self.pad_token_id = 0
 
         self.emb_size = emb_size
+
+        # Should decoder_input_ids be static here since its shape changes on every call?
+        self._jit_forward = jit(self.forward)
 
     def forward(
         self,
@@ -39,6 +43,7 @@ class T5Model(BaseModule):
 
         # enligt config.json: decoder_start_token_id = 0
         # This means that for the first generation step, forward should be called with decoder_input_ids something like [0]
+        logger.debug(f"input_ids: {input_ids.shape}, decoder_input_ids: {decoder_input_ids.shape}")
 
         decoder_output, encoder_output = self.base_model(state.base_model, input_ids, decoder_input_ids, rng, encoder_output=encoder_output)
         rescaled_output = decoder_output * (self.emb_size ** -0.5) # From TF Mesh implementation
@@ -78,15 +83,22 @@ class T5Model(BaseModule):
 
         return pred_token_ids
 
-        
     # TODO: Beam search
     def predict_next_token(self, token_probs: Array["1, vocab_size"]) -> Array["1"]:
         return jnp.argmax(token_probs, axis=-1)
+
+    def init_state(self, rng: Array) -> T5ModelState:
+        rngs = random.split(rng, 2)
+        return T5ModelState(
+            base_model=self.base_model.init_state(rngs[0]),
+            lm_head=self.lm_head.init_state(rngs[1]),
+        )
 
         
 
 class T5BaseModel(BaseModule):
     def __init__(self, vocab_size: int, emb_size: int, n_layers: int=6):
+        super().__init__()
         # Embedding layer weights are shared between encode and decoder
         self.encoder = T5Encoder(emb_size, n_layers, vocab_size)
         self.decoder = T5Decoder(emb_size, n_layers, vocab_size)
@@ -103,17 +115,24 @@ class T5BaseModel(BaseModule):
         rngs = random.split(rng, 2)
         
         if encoder_output is None:
-            logger.debug("No encoder output, running encoder")
             encoder_output = self.encoder(state.encoder, input_ids, rngs[0])
 
         decoder_output = self.decoder(state.decoder, decoder_input_ids, encoder_output, rngs[1])
 
         return decoder_output, encoder_output
 
+    def init_state(self, rng: Array) -> T5BaseModelState:
+        rngs = random.split(rng, 2)
+        return T5BaseModelState(
+            encoder=self.encoder.init_state(rngs[0]),
+            decoder=self.decoder.init_state(rngs[1]),
+        )
+
 
 # T5Stack with encoder config
 class T5Encoder(BaseModule):
     def __init__(self, emb_size: int, n_layers: int, vocab_size: int, n_heads: int=8, dropout_rate: float=0.1):
+        super().__init__()
         self.emb_size = emb_size
         self.n_layers = n_layers
 
@@ -157,6 +176,14 @@ class T5Encoder(BaseModule):
 
         return dropout(hidden_states_normed, self.dropout_rate, rngs[-1], training=training)
 
+    def init_state(self, rng: Array) -> T5EncoderState:
+        rngs = random.split(rng, 2)
+        return T5EncoderState(
+            embedding=self.embedding.init_state(rngs[0]),
+            blocks=[block.init_state(rng) for block in self.blocks],
+            norm=self.norm.init_state(rngs[1]),
+        )
+
 
 # T5Block as Encoder
 class T5EncoderBlock(BaseModule):
@@ -167,6 +194,7 @@ class T5EncoderBlock(BaseModule):
         dropout_rate: float=0.1,
         use_rel_attn_bias: bool=False,
     ):
+        super().__init__()
         self.self_attn_layer = T5SelfAttention(
             emb_size,
             n_heads,
@@ -202,10 +230,19 @@ class T5EncoderBlock(BaseModule):
         else:
             return self.feed_forward(state.feed_forward, self_attn_out, rngs[1], training=training)
 
+    def init_state(self, rng: Array) -> T5EncoderBlockState:
+        rngs = random.split(rng, 3)
+        return T5EncoderBlockState(
+            self_attn_layer=self.self_attn_layer.init_state(rngs[0]),
+            feed_forward=self.feed_forward.init_state(rngs[1]),
+        )
+
+
 # TODO: Cleanup debug
 # T5Stack with decoder config
 class T5Decoder(BaseModule):
     def __init__(self, emb_size: int, n_layers: int, vocab_size: int, n_heads: int=8, dropout_rate: float=0.1):
+        super().__init__()
         self.emb_size = emb_size
         self.n_layers = n_layers
 
@@ -283,9 +320,18 @@ class T5Decoder(BaseModule):
 
         return dropped
 
+    def init_state(self, rng: Array) -> T5DecoderState:
+        rngs = random.split(rng, 2)
+        return T5DecoderState(
+            embedding=self.embedding.init_state(rngs[0]),
+            blocks=[block.init_state(rng) for block in self.blocks],
+            norm=self.norm.init_state(rngs[1]),
+        )
+
 
 class T5DecoderBlock(BaseModule):
     def __init__(self, emb_size: int, n_heads: int, dropout_rate: float=0.1, use_rel_attn_bias: bool=False):
+        super().__init__()
         self.self_attn_layer = T5SelfAttention(
             emb_size,
             n_heads,
@@ -341,10 +387,19 @@ class T5DecoderBlock(BaseModule):
         else:
             return self.feed_forward(state.feed_forward, cross_attn_out, rngs[2], training=training)
 
+    def init_state(self, rng: Array) -> T5DecoderBlockState:
+        rngs = random.split(rng, 4)
+        return T5DecoderBlockState(
+            self_attn_layer=self.self_attn_layer.init_state(rngs[0]),
+            cross_attn_layer=self.cross_attn_layer.init_state(rngs[1]),
+            feed_forward=self.feed_forward.init_state(rngs[2]),
+        )
+
 
 
 class T5CrossAttention(BaseModule):
     def __init__(self, emb_size: int, n_heads: int, dropout: float=0.1, use_rel_attn_bias: bool=False):
+        super().__init__()
         self.attention = T5MultiHeadAttention(emb_size, n_heads, use_rel_attn_bias=use_rel_attn_bias, dropout=dropout)
         self.norm = RMSNorm(emb_size, eps=1e-6)
         self.dropout_rate = dropout
@@ -381,10 +436,18 @@ class T5CrossAttention(BaseModule):
             return outputs, pos_bias
         else:
             return xq + dropout(attn_out, self.dropout_rate, rngs[1], training)
+
+    def init_state(self, rng: Array) -> T5AttentionLayerState:
+        rngs = random.split(rng, 2)
+        return T5AttentionLayerState(
+            attention=self.attention.init_state(rngs[0]),
+            norm=self.norm.init_state(rngs[1]),
+        )
         
 
 class T5SelfAttention(BaseModule):
     def __init__(self, emb_size: int, n_heads: int, dropout: float=0.1, use_rel_attn_bias: bool=False, bidirectional: bool=True):
+        super().__init__()
         self.attention = T5MultiHeadAttention(emb_size, n_heads, use_rel_attn_bias, dropout=dropout, bidirectional=bidirectional)
         self.norm = RMSNorm(emb_size, eps=1e-06)
         self.dropout_rate = dropout
@@ -421,6 +484,13 @@ class T5SelfAttention(BaseModule):
             return outputs, pos_bias
         else:
             return x + dropout(attn_out, self.dropout_rate, rngs[1], training)
+
+    def init_state(self, rng: Array) -> T5AttentionLayerState:
+        rngs = random.split(rng, 2)
+        return T5AttentionLayerState(
+            attention=self.attention.init_state(rngs[0]),
+            norm=self.norm.init_state(rngs[1]),
+        )
         
 
 
@@ -435,6 +505,7 @@ class T5MultiHeadAttention(BaseModule):
         dropout: float=0.1,
         bidirectional: bool=True
     ):
+        super().__init__()
         
         # TODO: Add masking
 
@@ -701,6 +772,7 @@ class T5MultiHeadAttention(BaseModule):
 
 class T5Dense(BaseModule):
     def __init__(self, n_in: int, d_ff: int, dropout: float=0.1, act: Callable=relu):
+        super().__init__()
         self.wi = Linear(n_in, d_ff, bias=False)
         self.wo = Linear(d_ff, n_in, bias=False)
         self.dropout = dropout
@@ -723,6 +795,7 @@ class T5Dense(BaseModule):
 
 class T5FeedForward(BaseModule):
     def __init__(self, n_in: int, d_ff: int, dropout: float=0.1):
+        super().__init__()
         self.dense = T5Dense(n_in, d_ff, dropout)
         # T5LayerFF uses custom LayerNorm which is equivalent to RMSNorm
         self.norm = RMSNorm(n_in, eps=1e-6)
@@ -735,3 +808,10 @@ class T5FeedForward(BaseModule):
         z = self.dense(state.dense, z, rng1, training)
         x += dropout(z, self.dropout, rng2, training)
         return x
+
+    def init_state(self, rng: Array) -> T5FeedForwardState:
+        rng1, rng2 = random.split(rng, 2)
+        return T5FeedForwardState(
+            norm=self.norm.init_state(rng1),
+            dense=self.dense.init_state(rng2),
+        )

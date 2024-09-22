@@ -10,6 +10,7 @@ class EncoderLayer(BaseModule):
     def __init__(
         self, emb_size: int, n_heads: int, d_ff: int = 2048, dropout: float = 0.0
     ):
+        super().__init__()
         self.emb_size = emb_size
         self.norm_attn = LayerNorm(emb_size)
         self.self_attn = MultiHeadAttention(emb_size, n_heads)
@@ -67,6 +68,7 @@ class Encoder(BaseModule):
         encoder_layer:  instance of EncoderLayer
         n_layers:       Number of encoder layers
         """
+        super().__init__()
 
         self.n_layers = n_layers
         self.layers = [encoder_layer for _ in range(n_layers)]
@@ -106,6 +108,7 @@ class DecoderLayer(BaseModule):
     def __init__(
         self, emb_size: int, n_heads: int, d_ff: int = 2048, dropout: float = 0.0
     ):
+        super().__init__()
         self.norm_attn = LayerNorm(emb_size)
         self.self_attn = MultiHeadAttention(emb_size, n_heads)
 
@@ -170,6 +173,7 @@ class Decoder(BaseModule):
     def __init__(
         self, decoder_layer: DecoderLayer, n_layers: int, norm: LayerNorm = None
     ):
+        super().__init__()
         self.n_layers = n_layers
         self.layers = [decoder_layer for _ in range(n_layers)]
         self.norm = norm
@@ -225,6 +229,7 @@ class Transformer(BaseModule):
         d_ff: int = 2048,
         dropout: float = 0.0,
     ):
+        super().__init__()
         self.encoder = Encoder(
             EncoderLayer(emb_size, n_heads, d_ff, dropout),
             n_layers,
@@ -281,6 +286,7 @@ class Seq2SeqTransformer(BaseModule):
     def __init__(
         self, src_vocab_size: int, emb_size: int, tgt_vocab_size: int = None, **kwargs
     ):
+        super().__init__()
         if tgt_vocab_size is None:
             tgt_vocab_size = src_vocab_size
 

@@ -76,6 +76,7 @@ def dropout(x: Array, prob: float, rng: Array, training: bool = True) -> Array:
 # https://arxiv.org/abs/2006.08195
 class Snake(BaseModule):
     def __init__(self, n_in: int, training: bool = False):
+        super().__init__()
         self.n_in = n_in
         self.training = training
 

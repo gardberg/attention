@@ -11,6 +11,7 @@ from base import BaseModule, Array
 
 class BatchNorm1d(BaseModule):
     def __init__(self, dims: int):
+        super().__init__()
         # dims: N, input dims aka number of input features
         self.dims = dims
 
@@ -62,6 +63,7 @@ class BatchNorm1d(BaseModule):
 # (context_len, batch_size, emb_dim)
 class LayerNorm(BaseModule):
     def __init__(self, norm_dims: Union[tuple[int, ...], int], eps=1e-5):
+        super().__init__()
         assert isinstance(
             norm_dims, (tuple, int)
         ), f"norm_dims must be tuple or int, got {type(norm_dims)}"
@@ -105,6 +107,7 @@ class LayerNorm(BaseModule):
 
 class RMSNorm(BaseModule):
     def __init__(self, norm_dims: int, eps=1e-5):
+        super().__init__()
         self.norm_dim = norm_dims  # size of last dim to normalize over
         self.eps = eps
 
@@ -120,6 +123,7 @@ class RMSNorm(BaseModule):
 
 class Linear(BaseModule):
     def __init__(self, n_in: int, n_out: int, bias: bool = True, batch_dim: int = 0):
+        super().__init__()
         self.n_in = n_in
         self.n_out = n_out
         self.bias = bias
@@ -152,6 +156,7 @@ class FeedForward(BaseModule):
     def __init__(
         self, n_in: int, d_ff: int, act: Callable = relu, dropout: float = 0.0
     ):
+        super().__init__()
         self.layer1 = Linear(n_in, d_ff)
         self.layer2 = Linear(d_ff, n_in)
         self.act = act
@@ -179,6 +184,7 @@ class Embedding(BaseModule):
     """
 
     def __init__(self, n_embeddings: int, emb_size: int):
+        super().__init__()
         self.n_embeddings = n_embeddings
         self.emb_size = emb_size
 
@@ -186,7 +192,6 @@ class Embedding(BaseModule):
         # indices.shape:            (*,), e.g. (context_len, batch_size)
         # output.shape:             (*, emb_size)
         # state.embeddings.shape:   (vocab_size, emb_size)
-        assert jnp.max(indices) < self.n_embeddings, f"Index out of bounds"
         return jnp.take(state.embeddings, indices, axis=0)
 
     def init_state(self, rng: Array) -> EmbeddingState:
@@ -203,6 +208,7 @@ class PreAttention(BaseModule):
     def __init__(
         self, emb_size: int, n_heads: int, d_k: int = None, bias: bool = False
     ):
+        super().__init__()
         self.n_heads = n_heads
         self.d_k = emb_size if d_k is None else d_k
 
@@ -269,6 +275,7 @@ class MultiHeadAttention(BaseModule):
         causal:     Whether to use a causal mask in the attention calculation.
                     If False, no mask is used. Manually specifying a mask overrides this setting.
         """
+        super().__init__()
 
         self.emb_size = emb_size
         self.n_heads = n_heads
@@ -434,6 +441,7 @@ class MultiHeadAttention(BaseModule):
 
 class PositionalEncoding(BaseModule):
     def __init__(self, emb_size: int, dropout: float = 0.0, max_len: int = 5000):
+        super().__init__()
         self.emb_size = emb_size
         self.dropout = dropout
         self.max_len = max_len
