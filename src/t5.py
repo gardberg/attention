@@ -51,7 +51,7 @@ class T5Model(BaseModule):
         rng: Array,
         max_length: int=300,
     ) -> Array["1, _"]:
-        # Generate translation from input_ids using beam search
+        # Generate translation from input_ids
         # Returns an array of token ids of the predicted text
         # until eather max_length of a stop token is reached
 
@@ -69,8 +69,6 @@ class T5Model(BaseModule):
 
             probs = softmax(logits, dim=-1)
 
-            # sample
-            # next_token_id = random.choice(rngs[1], jnp.arange(probs.shape[-1]), p=probs[0])
             next_token_id = self.predict_next_token(probs)
 
             pred_token_ids = jnp.concatenate([pred_token_ids, next_token_id.reshape(1, 1)], axis=1)
@@ -81,6 +79,7 @@ class T5Model(BaseModule):
         return pred_token_ids
 
         
+    # TODO: Beam search
     def predict_next_token(self, token_probs: Array["1, vocab_size"]) -> Array["1"]:
         return jnp.argmax(token_probs, axis=-1)
 
@@ -98,7 +97,7 @@ class T5BaseModel(BaseModule):
         input_ids: Array["batch_size, context_len"], # context, e.g. source language to transle
         decoder_input_ids: Array["batch_size, tgt_len"], # start of translation, e.g. "Translate English to French: "
         rng: Array,
-        encoder_output: Optional[Array["batch_size, context_len, emb_size"]] = None,
+        encoder_output: Array["batch_size, context_len, emb_size"] = None,
     ) -> Tuple[Array["batch_size, tgt_len, emb_size"], Array["batch_size, context_len, emb_size"]]:
 
         rngs = random.split(rng, 2)
@@ -255,7 +254,7 @@ class T5Decoder(BaseModule):
 
         # init pos bias for both self attention and cross attention in decoder
         # and reuse the bias from prev layer
-        self_pos_bias: Array["1, n_heads, context_len, context_len"] = None
+        self_pos_bias: Optional[Array["1, n_heads, context_len, context_len"]] = None
         cross_pos_bias: Array["1, n_heads, context_len, context_len"] = None
         for i, (block, block_state, rng) in enumerate(zip(self.blocks, state.blocks, rngs[1:self.n_layers + 1])):
             block_output = block(

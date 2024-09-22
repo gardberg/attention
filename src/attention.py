@@ -139,20 +139,8 @@ class Linear(BaseModule):
         )
         return LinearState(w, b)
 
-    # TODO: Rewrite
-    def __call__(self, state: LinearState, x: Array) -> Array:
-        """
-        Batched forward pass along batch_dim
-        """
-        if x.ndim > 1:
-            return jax.vmap(self.forward, in_axes=(None, self.batch_dim))(state, x)
-        else:
-            return self.forward(state, x)
-
     def forward(self, state: LinearState, x: Array) -> Array:
         """
-        Non-batched forward pass
-
         x: input with shape (*, n_in) where * is any number of dimension, including None
         returns: output with shape (*, n_out)
         """

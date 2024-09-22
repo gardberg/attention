@@ -1,7 +1,6 @@
 import jax.numpy as jnp
-import jax
 from typing import Callable
-from jax import Array
+from base import Array
 
 
 class Loss:

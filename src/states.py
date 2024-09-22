@@ -1,11 +1,24 @@
-from typing import NamedTuple, TypeVar, Type
+from typing import NamedTuple, Type
 import jax
-from jax import Array
 import jax.numpy as jnp
 from transformers.models.t5.modeling_t5 import T5DenseActDense, T5LayerFF, T5Attention, T5LayerSelfAttention, T5LayerCrossAttention, T5Block, T5Stack, T5Model, T5ForConditionalGeneration
-
+from base import Array
 
 from torch import nn
+
+
+def from_pretrained(hf_model: str) -> NamedTuple:
+    SUPPORTED_MODELS = ["google-t5/t5-small"]
+    if hf_model not in SUPPORTED_MODELS:
+        raise NotImplementedError(f"Model {hf_model} not supported. Supported models are: {SUPPORTED_MODELS}")
+
+    if hf_model == "google-t5/t5-small":
+        model = T5ForConditionalGeneration.from_pretrained(hf_model)
+        state = to_jax_state(model)
+        del model
+        return state
+    
+    raise ValueError(f"Unexpected model {hf_model}")
 
 
 # Contains 3 more than torch
@@ -148,12 +161,7 @@ class T5ModelState(NamedTuple):
     lm_head: LinearState
 
 
-# TODO: Move into separate file
-# Requires torch import, which is a bit heavy
-NamedTupleSubclass = TypeVar("NamedTupleSubclass", bound=NamedTuple)
-
-
-def to_jax_state(module: nn.Module) -> Type[NamedTupleSubclass]:
+def to_jax_state(module: nn.Module) -> NamedTuple:
     """
     Extracts parameters from an nn.Module to a NamedTuple state
     

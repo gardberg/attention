@@ -1,6 +1,5 @@
 import jax
 import jax.numpy as jnp
-from jax import Array
 
 import torch
 import numpy as np
@@ -11,6 +10,7 @@ from transformer import EncoderLayer, DecoderLayer, Encoder, Decoder, Transforme
 from states import to_jax_state
 from log_utils import logger
 from attention import create_causal_mask, LayerNorm
+from base import Array
 
 CONTEXT_LEN = 3
 

@@ -1,8 +1,7 @@
 import os
-from jax import Array
+from base import Array
 from typing import Union, NamedTuple
-from attention import NamedTupleSubclass
-from jax import tree_util
+from jax import Array as JaxArray
 import torch.nn as nn
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -16,7 +15,7 @@ def get_tokenizer(name: str) -> Encoding:
 
 
 # TODO: Ugly at the moment
-def state_to_str(state: Union[NamedTupleSubclass, Array, bool], indent=0):
+def state_to_str(state: Union[NamedTuple, Array, bool], indent=0):
     # state is a NamedTuple which contains several other NamedTuples, Arrays, or bools
 
     if isinstance(state, list):
@@ -41,10 +40,11 @@ def state_to_str(state: Union[NamedTupleSubclass, Array, bool], indent=0):
 
 # TODO: Atm counts all params. How do we count only learnable?
 def count_params(state) -> int:
+    print(f"Calling count_params with state = {type(state)}:{state}")
     if isinstance(state, int):
         return 1
 
-    if isinstance(state, Array):
+    if isinstance(state, JaxArray):
         return state.size
 
     if isinstance(state, bool):

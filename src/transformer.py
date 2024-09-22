@@ -1,7 +1,6 @@
 import jax
 from attention import *
-from jax import Array
-
+from base import Array
 
 class EncoderLayer(BaseModule):
     """

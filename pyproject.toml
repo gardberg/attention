@@ -42,3 +42,4 @@ markers = [
 [tool.pyright]
 # Removes warning for Array["size_A, size_B"] type hinting
 reportInvalidTypeForm = false
+typeCheckingMode = "off"
