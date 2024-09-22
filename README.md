@@ -1,6 +1,8 @@
 # Attention
 
-Exploring attention and related concepts in Jax.
+From-scratch implementations of core transformer concepts in Jax Numpy.
+
+For example - an [implementation](https://github.com/gardberg/attention/blob/main/src/t5.py#L19) of [Google's T5 model](https://arxiv.org/abs/1910.10683), all the way from a linear layer to autoregressive encoder-decoder text generation.
 
 
 ### Demonstrating quadratic time and memory scaling
@@ -32,10 +34,6 @@ Run formatting with `black .`
 
 ### TODO
 
-- [ ] Ensure split is used on all rng keys in functions
-
-If the same key is split in two different places, does it result in the same subkeys?
-
 - [x] Implement softmax
 - [x] Implement network
 - [x] Implement batch norm
@@ -44,7 +42,7 @@ If the same key is split in two different places, does it result in the same sub
 
 - [x] Add tests to compare with pytorch implementations
 - [x] Simplify logging
-- [ ] Switch to __name__ logging
+- [ ] Switch to `__name__` logging
 - [x] Switch to using single Array type for shape hinting
 
 #### Transformer
@@ -59,9 +57,13 @@ If the same key is split in two different places, does it result in the same sub
 - [x] Decoder
 - [x] Transformer
 - [x] Seq2Seq
-- [ ] T5
-  - [ ] Inference using random weights
-  - [ ] Inference using t5-small weights
+- [x] T5
+  - [x] Inference using random weights
+  - [x] Inference using t5-small weights
+  - [ ] Beam search
+  - [ ] CLI inference example
+- [ ] Wav2Vec
+- [ ] GPT
 
 #### Improvements
 
