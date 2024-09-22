@@ -33,10 +33,3 @@ logger = logging.getLogger("attention")
 logger.setLevel(LOG_LEVEL)
 
 curr_log_level = logging.getLevelName(logger.getEffectiveLevel())
-
-if curr_log_level == "DEBUG":
-    logger.debug("Log level set to DEBUG")
-elif curr_log_level == "INFO":
-    logger.info("Log level set to INFO")
-elif curr_log_level == "WARNING":
-    logger.warning("Log level set to WARNING")
