@@ -43,7 +43,7 @@ class T5Model(BaseModule):
 
         # enligt config.json: decoder_start_token_id = 0
         # This means that for the first generation step, forward should be called with decoder_input_ids something like [0]
-        logger.debug(f"input_ids: {input_ids.shape}, decoder_input_ids: {decoder_input_ids.shape}")
+        # logger.debug(f"input_ids: {input_ids.shape}, decoder_input_ids: {decoder_input_ids.shape}")
 
         decoder_output, encoder_output = self.base_model(state.base_model, input_ids, decoder_input_ids, rng, encoder_output=encoder_output)
         rescaled_output = decoder_output * (self.emb_size ** -0.5) # From TF Mesh implementation

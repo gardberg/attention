@@ -4,8 +4,31 @@ From-scratch implementations of core transformer concepts in Jax Numpy.
 
 For example - an [implementation](https://github.com/gardberg/attention/blob/main/src/t5.py#L19) of [Google's T5 model](https://arxiv.org/abs/1910.10683), all the way from a linear layer to autoregressive encoder-decoder text generation.
 
+See `examples/t5_generation.ipynb`
 
-### Demonstrating quadratic time and memory scaling
+```python
+# Load pytorch model
+torch_t5_model = T5ForConditionalGeneration.from_pretrained("google-t5/t5-small")
+tokenizer = AutoTokenizer.from_pretrained("google-t5/t5-small")
+
+# Copy weights to jax state
+state = to_jax_state(torch_t5_model)
+
+jax_t5_model = T5Model(vocab_size=32128, emb_size=512)
+rng = jax.random.PRNGKey(42)
+
+INPUT = "translate English to French: Hello!"
+
+input_ids = jnp.array(tokenizer(INPUT, return_tensors="pt").input_ids)
+pred_token_ids = jax_t5_model.generate(state, input_ids, rng, max_length=40)
+pred_text = tokenizer.decode(pred_token_ids[0], skip_special_tokens=True)
+
+print(pred_text)
+# >> Bonjour!
+```
+
+
+### Demonstrating attention quadratic time and memory scaling
 
 <div style="display: flex; justify-content: space-between;">
     <img src="images/attention_time_scaling.png" width="400" height="250" />

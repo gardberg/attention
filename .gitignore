@@ -8,3 +8,4 @@ src/.cache/*
 TODO.md
 models/*
 hf_hub
+/tmp
