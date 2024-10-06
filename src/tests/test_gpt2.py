@@ -2,7 +2,7 @@ import jax
 import json
 
 from transformers import GPT2LMHeadModel
-from transformers.models.gpt2.modeling_gpt2 import GPT2Block, GPT2MLP
+from transformers.models.gpt2.modeling_gpt2 import GPT2Block, GPT2MLP, GPT2Attention
 from transformers.models.gpt2.configuration_gpt2 import GPT2Config
 from huggingface_hub import hf_hub_download
 
@@ -13,6 +13,7 @@ import pytest
 from pytest import fixture
 
 from models.gpt2 import GPT2, GPT2Block, GPT2Dense
+from models.gpt2 import GPT2Attention as JaxGPT2Attention
 from attention import LayerNorm
 from states import to_jax_state
 from tests.test_t5 import BATCH_SIZE, EMBED_SIZE
@@ -81,8 +82,26 @@ def test_gpt2_norm(gpt2_config: GPT2Config):
     assert jnp.allclose(jax_out, torch_out.numpy(), atol=1e-5), f"jax_out = {jax_out}, torch_out = {torch_out}"
 
 
-def test_gpt2_attention():
-    pass
+def test_gpt2_attention(gpt2_config: GPT2Config):
+    x = torch.randn((BATCH_SIZE, SEQ_LEN, gpt2_config.n_embd), requires_grad=False)
+    x_jax = jnp.array(x)
+
+    gpt2_attention = GPT2Attention(gpt2_config).eval()
+
+    with torch.no_grad():
+        torch_out, _key_values = gpt2_attention(x)
+
+    # Jax
+    jax_gpt2_attention = JaxGPT2Attention(emb_size=gpt2_config.n_embd)
+    states = to_jax_state(gpt2_attention)
+
+    rng = jax.random.PRNGKey(0)
+    jax_out = jax_gpt2_attention(states, x_jax, rng)
+
+    # import code; code.interact(local=locals())
+
+    assert torch_out.shape == jax_out.shape, f"torch_out.shape = {torch_out.shape}, jax_out.shape = {jax_out.shape}"
+    assert jnp.allclose(jax_out, torch_out.numpy(), atol=1e-5), f"jax_out = {jax_out}, torch_out = {torch_out}"
 
 
 def test_gpt2_block():

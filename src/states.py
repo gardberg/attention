@@ -2,7 +2,9 @@ from typing import NamedTuple, Type
 import jax
 import jax.numpy as jnp
 from transformers.models.t5.modeling_t5 import T5DenseActDense, T5LayerFF, T5Attention, T5LayerSelfAttention, T5LayerCrossAttention, T5Block, T5Stack, T5Model, T5ForConditionalGeneration
-from transformers.models.gpt2.modeling_gpt2 import GPT2Block, GPT2MLP
+from transformers.models.gpt2.modeling_gpt2 import GPT2Block, GPT2MLP, GPT2Attention
+from transformers.pytorch_utils import Conv1D
+from urllib3 import Retry
 from base import Array
 
 from torch import nn
@@ -165,6 +167,11 @@ class T5ModelState(NamedTuple):
 # GPT2 States
 class GPT2DenseState(NamedTuple):
     c_fc: LinearState
+    c_proj: LinearState
+
+
+class GPT2AttentionState(NamedTuple):
+    c_attn: LinearState
     c_proj: LinearState
 
 
@@ -342,17 +349,23 @@ def to_jax_state(module: nn.Module) -> NamedTuple:
         )
 
     # GPT2
+
+    elif isinstance(module, Conv1D):
+        return LinearState(
+            weights=jnp.array(module.weight.detach().transpose(0, 1)),
+            bias=jnp.array(module.bias.detach()) if module.bias is not None else None,
+        )
     
     elif isinstance(module, GPT2MLP):
         return GPT2DenseState(
-            c_fc=LinearState(
-                weights=jnp.array(module.c_fc.weight.detach().transpose(0, 1)), # GPT2 uses Conv1D layers, which weight matrices are transposed
-                bias=jnp.array(module.c_fc.bias.detach()) if module.c_fc.bias is not None else None,
-            ),
-            c_proj=LinearState(
-                weights=jnp.array(module.c_proj.weight.detach().transpose(0, 1)),
-                bias=jnp.array(module.c_proj.bias.detach()) if module.c_proj.bias is not None else None,
-            ),
+            c_fc=to_jax_state(module.c_fc),
+            c_proj=to_jax_state(module.c_proj),
+        )
+
+    elif isinstance(module, GPT2Attention):
+        return GPT2AttentionState(
+            c_attn=to_jax_state(module.c_attn),
+            c_proj= to_jax_state(module.c_proj),       
         )
 
     else:
