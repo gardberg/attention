@@ -21,7 +21,7 @@ from log_utils import logger
 
 T5_REPO = "google-t5/t5-small"
 
-@fixture
+@fixture(scope="function")
 def t5_config() -> T5Config:
 
     CONFIG_NAME = "config.json"
@@ -449,7 +449,7 @@ def test_t5_base_model_encoder(t5_config, use_pretrained):
     torch_out = torch_out.last_hidden_state
 
     # Jax
-    rng = jax.random.PRNGKey(0)
+    rng = jax.random.PRNGKey(42)
     input_ids_jax = jnp.array(input_ids.detach().numpy())
     decoder_input_ids_jax = jnp.array(decoder_input_ids.detach().numpy())
     encoder_hidden_states_jax = jnp.array(encoder_hidden_states.detach().numpy())

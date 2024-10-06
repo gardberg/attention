@@ -1,4 +1,3 @@
-from venv import create
 from base import Array, BaseModule
 from transformer import Embedding
 from attention import Linear, LayerNorm, create_causal_mask
