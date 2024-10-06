@@ -2,6 +2,7 @@ from typing import NamedTuple, Type
 import jax
 import jax.numpy as jnp
 from transformers.models.t5.modeling_t5 import T5DenseActDense, T5LayerFF, T5Attention, T5LayerSelfAttention, T5LayerCrossAttention, T5Block, T5Stack, T5Model, T5ForConditionalGeneration
+from transformers.models.gpt2.modeling_gpt2 import GPT2Block, GPT2MLP
 from base import Array
 
 from torch import nn
@@ -159,6 +160,12 @@ class T5BaseModelState(NamedTuple):
 class T5ModelState(NamedTuple):
     base_model: T5BaseModelState
     lm_head: LinearState
+
+    
+# GPT2 States
+class GPT2DenseState(NamedTuple):
+    c_fc: LinearState
+    c_proj: LinearState
 
 
 def to_jax_state(module: nn.Module) -> NamedTuple:
@@ -332,6 +339,20 @@ def to_jax_state(module: nn.Module) -> NamedTuple:
                 decoder=to_jax_state(module.decoder),
             ),
             lm_head=to_jax_state(module.lm_head),
+        )
+
+    # GPT2
+    
+    elif isinstance(module, GPT2MLP):
+        return GPT2DenseState(
+            c_fc=LinearState(
+                weights=jnp.array(module.c_fc.weight.detach().transpose(0, 1)), # GPT2 uses Conv1D layers, which weight matrices are transposed
+                bias=jnp.array(module.c_fc.bias.detach()) if module.c_fc.bias is not None else None,
+            ),
+            c_proj=LinearState(
+                weights=jnp.array(module.c_proj.weight.detach().transpose(0, 1)),
+                bias=jnp.array(module.c_proj.bias.detach()) if module.c_proj.bias is not None else None,
+            ),
         )
 
     else:

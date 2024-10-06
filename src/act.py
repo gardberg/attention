@@ -53,6 +53,11 @@ def glu(x: Array, dim=-1) -> Array:
     return x1 * sigmoid(x2)
 
 
+# GPT2 GELU: https://arxiv.org/abs/1606.08415
+def gelu_new(x: Array) -> Array:
+    return 0.5 * x * (1.0 + jnp.tanh(jnp.sqrt(2.0 / jnp.pi) * (x + 0.044715 * jnp.power(x, 3.0))))
+
+
 def swiglu(x: Array, dim=-1) -> Array:
     assert x.shape[dim] % 2 == 0, f"Dimension {dim} must be even, got {x.shape[dim]}"
     mid = x.shape[dim] // 2
