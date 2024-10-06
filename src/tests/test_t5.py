@@ -15,7 +15,7 @@ import jax
 from utils import ROOT_DIR, count_params, torch_count_params
 from testing_utils import TOL
 from transformers.models.t5 import T5Config
-from t5 import T5Dense, T5FeedForward, T5MultiHeadAttention, T5SelfAttention, T5CrossAttention, T5EncoderBlock, T5DecoderBlock, T5Encoder, T5Decoder, T5BaseModel, T5Model
+from models.t5 import T5Dense, T5FeedForward, T5MultiHeadAttention, T5SelfAttention, T5CrossAttention, T5EncoderBlock, T5DecoderBlock, T5Encoder, T5Decoder, T5BaseModel, T5Model
 from states import to_jax_state
 from log_utils import logger
 

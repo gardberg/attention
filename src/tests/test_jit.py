@@ -1,4 +1,4 @@
-from t5 import T5Model
+from models.t5 import T5Model
 from pytest import fixture, mark
 from transformers.models.t5 import T5Config
 from huggingface_hub import hf_hub_download
