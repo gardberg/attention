@@ -40,7 +40,7 @@ def state_to_str(state: Union[NamedTuple, Array, bool], indent=0):
 
 # TODO: Atm counts all params. How do we count only learnable?
 def count_params(state) -> int:
-    print(f"Calling count_params with state = {type(state)}:{state}")
+    # print(f"Calling count_params with state = {type(state)}:{state}")
     if isinstance(state, int):
         return 1
 

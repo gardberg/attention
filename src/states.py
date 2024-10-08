@@ -4,7 +4,6 @@ import jax.numpy as jnp
 from transformers.models.t5.modeling_t5 import T5DenseActDense, T5LayerFF, T5Attention, T5LayerSelfAttention, T5LayerCrossAttention, T5Block, T5Stack, T5Model, T5ForConditionalGeneration
 from transformers.models.gpt2.modeling_gpt2 import GPT2Block, GPT2MLP, GPT2Attention
 from transformers.pytorch_utils import Conv1D
-from urllib3 import Retry
 from base import Array
 
 from torch import nn

@@ -86,7 +86,13 @@ Run formatting with `black .`
   - [ ] Beam search
   - [ ] CLI inference example
 - [ ] Wav2Vec
-- [ ] GPT
+- [ ] GPT2
+  - [x] Dense
+  - [x] Attention
+    - [x] Fix interfering test (fixed by limiting the scope of each test to function)
+
+- [ ] Use torch hooks to debug tests
+- [ ] Implement hooks for basemodel
 
 #### Improvements
 

@@ -16,7 +16,6 @@ from models.gpt2 import GPT2, GPT2Block, GPT2Dense
 from models.gpt2 import GPT2Attention as JaxGPT2Attention
 from attention import LayerNorm
 from states import to_jax_state
-from tests.test_t5 import BATCH_SIZE, EMBED_SIZE
 from utils import count_params, torch_count_params
 
 from log_utils import logger
@@ -25,7 +24,7 @@ from log_utils import logger
 MODEL_NAME = "gpt2"
 BATCH_SIZE = 2
 SEQ_LEN = 8
-EMBED_SIZE = 10
+EMBED_SIZE = 768
 
 test_shape = (BATCH_SIZE, SEQ_LEN, EMBED_SIZE)
 
@@ -35,9 +34,6 @@ GPT2_REPO = "openai-community/gpt2"
 
 @fixture(scope="function")
 def gpt2_config() -> GPT2Config:
-    torch.manual_seed(0)
-    rng = jax.random.PRNGKey(0)
-
     CONFIG_NAME = "config.json"
 
     gpt2_config_path = hf_hub_download(repo_id=GPT2_REPO, filename=CONFIG_NAME)
@@ -54,9 +50,6 @@ def gpt2_config() -> GPT2Config:
 
 @pytest.mark.skip
 def test_load_gpt2(gpt2_config: GPT2Config):
-    torch.manual_seed(0)
-    rng = jax.random.PRNGKey(0)
-
     torch_model = GPT2LMHeadModel.from_pretrained(MODEL_NAME)
     torch_n_params = torch_count_params(torch_model)
 
@@ -67,11 +60,7 @@ def test_load_gpt2(gpt2_config: GPT2Config):
     
 
 # Redundant, already running in test_compare.py:204
-@pytest.mark.skip
 def test_gpt2_norm(gpt2_config: GPT2Config):
-    torch.manual_seed(0)
-    rng = jax.random.PRNGKey(0)
-
     x = torch.randn(test_shape, requires_grad=False) * 10
     x_jax = jnp.array(x)
 
@@ -91,12 +80,7 @@ def test_gpt2_norm(gpt2_config: GPT2Config):
     assert jnp.allclose(jax_out, torch_out.numpy(), atol=1e-5), f"jax_out = {jax_out}, torch_out = {torch_out}"
 
 
-# TODO: Making t5 base model encoder test fail???
-@pytest.mark.skip
 def test_gpt2_attention(gpt2_config: GPT2Config):
-    torch.manual_seed(0)
-    rng = jax.random.PRNGKey(0)
-
     x = torch.randn((BATCH_SIZE, SEQ_LEN, gpt2_config.n_embd), requires_grad=False)
     x_jax = jnp.array(x)
 
@@ -121,15 +105,17 @@ def test_gpt2_block():
     pass 
 
 
-@pytest.mark.skip
 def test_gpt2_dense(gpt2_config: GPT2Config):
-    torch.manual_seed(0)
-    rng = jax.random.PRNGKey(0)
+    # forward debug hook
+    def debug_hook(module, input, output):
+        print(f"{module.__class__.__name__}: {input[0].shape} -> {output.shape}")
 
-    x = torch.randn((1, 768), requires_grad=False) * 10
+    x = torch.randn((1, EMBED_SIZE), requires_grad=False) * 10
     x_jax = jnp.array(x)
 
     gpt2_dense = GPT2MLP(4 * EMBED_SIZE, gpt2_config).eval()
+
+    gpt2_dense.register_forward_hook(debug_hook)
 
     with torch.no_grad():
         torch_out = gpt2_dense(x)
