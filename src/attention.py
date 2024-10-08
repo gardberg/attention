@@ -9,6 +9,7 @@ from functools import lru_cache
 
 from base import BaseModule, Array
 
+
 class BatchNorm1d(BaseModule):
     def __init__(self, dims: int):
         super().__init__()
@@ -320,10 +321,9 @@ class MultiHeadAttention(BaseModule):
         state: MultiHeadAttentionState,
         k: Array,
         v: Array,
-        use_cache: bool, 
-        kv_cache: tuple[Array, Array]
+        use_cache: bool,
+        kv_cache: tuple[Array, Array],
     ) -> tuple[Array, Array]:
-
         if use_cache and kv_cache is not None:
             assert len(kv_cache) == 2, f"Expected kv_cache to be a tuple of length 2"
             cached_keys, cached_values = kv_cache
@@ -331,9 +331,7 @@ class MultiHeadAttention(BaseModule):
             next_k = k[-1][None, ...]
             next_v = v[-1][None, ...]
 
-            key = jnp.concatenate(
-                [cached_keys, self.key_fn(state.key, next_k)], axis=0
-            )
+            key = jnp.concatenate([cached_keys, self.key_fn(state.key, next_k)], axis=0)
             value = jnp.concatenate(
                 [cached_values, self.value_fn(state.value, next_v)], axis=0
             )
@@ -373,7 +371,8 @@ class MultiHeadAttention(BaseModule):
 
         key, value = self.get_kv(state, k, v, use_cache, kv_cache)
 
-        if use_cache: kv_cache = (key, value)
+        if use_cache:
+            kv_cache = (key, value)
 
         self.debug_states["query"] = query
         self.debug_states["key"] = key

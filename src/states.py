@@ -1,7 +1,17 @@
 from typing import NamedTuple, Type
 import jax
 import jax.numpy as jnp
-from transformers.models.t5.modeling_t5 import T5DenseActDense, T5LayerFF, T5Attention, T5LayerSelfAttention, T5LayerCrossAttention, T5Block, T5Stack, T5Model, T5ForConditionalGeneration
+from transformers.models.t5.modeling_t5 import (
+    T5DenseActDense,
+    T5LayerFF,
+    T5Attention,
+    T5LayerSelfAttention,
+    T5LayerCrossAttention,
+    T5Block,
+    T5Stack,
+    T5Model,
+    T5ForConditionalGeneration,
+)
 from transformers.models.gpt2.modeling_gpt2 import GPT2Block, GPT2MLP, GPT2Attention
 from transformers.pytorch_utils import Conv1D
 from base import Array
@@ -12,14 +22,16 @@ from torch import nn
 def from_pretrained(hf_model: str) -> NamedTuple:
     SUPPORTED_MODELS = ["google-t5/t5-small"]
     if hf_model not in SUPPORTED_MODELS:
-        raise NotImplementedError(f"Model {hf_model} not supported. Supported models are: {SUPPORTED_MODELS}")
+        raise NotImplementedError(
+            f"Model {hf_model} not supported. Supported models are: {SUPPORTED_MODELS}"
+        )
 
     if hf_model == "google-t5/t5-small":
         model = T5ForConditionalGeneration.from_pretrained(hf_model)
         state = to_jax_state(model)
         del model
         return state
-    
+
     raise ValueError(f"Unexpected model {hf_model}")
 
 
@@ -132,7 +144,7 @@ class T5AttentionLayerState(NamedTuple):
 
 class T5EncoderBlockState(NamedTuple):
     self_attn_layer: T5AttentionLayerState
-    feed_forward: T5FeedForwardState 
+    feed_forward: T5FeedForwardState
 
 
 class T5DecoderBlockState(NamedTuple):
@@ -142,13 +154,13 @@ class T5DecoderBlockState(NamedTuple):
 
 
 class T5EncoderState(NamedTuple):
-    embedding: EmbeddingState # Shared with T5Decoder
+    embedding: EmbeddingState  # Shared with T5Decoder
     blocks: list[T5EncoderBlockState]
     norm: RMSNormState
 
 
 class T5DecoderState(NamedTuple):
-    embedding: EmbeddingState # Shared with T5Encoder
+    embedding: EmbeddingState  # Shared with T5Encoder
     blocks: list[T5DecoderBlockState]
     norm: RMSNormState
 
@@ -162,7 +174,7 @@ class T5ModelState(NamedTuple):
     base_model: T5BaseModelState
     lm_head: LinearState
 
-    
+
 # GPT2 States
 class GPT2DenseState(NamedTuple):
     c_fc: LinearState
@@ -177,7 +189,7 @@ class GPT2AttentionState(NamedTuple):
 def to_jax_state(module: nn.Module) -> NamedTuple:
     """
     Extracts parameters from an nn.Module to a NamedTuple state
-    
+
     module: nn.Module
     """
     if isinstance(module, nn.MultiheadAttention):
@@ -202,9 +214,7 @@ def to_jax_state(module: nn.Module) -> NamedTuple:
     elif isinstance(module, nn.Linear):
         weight, bias = (
             jnp.array(module.weight.detach()),
-            jnp.array(module.bias.detach())
-            if module.bias is not None
-            else None,
+            jnp.array(module.bias.detach()) if module.bias is not None else None,
         )
         return LinearState(weight, bias)
 
@@ -241,17 +251,13 @@ def to_jax_state(module: nn.Module) -> NamedTuple:
     elif isinstance(module, nn.TransformerEncoder):
         return EncoderState(
             layers=[to_jax_state(layer) for layer in module.layers],
-            norm=to_jax_state(module.norm)
-            if module.norm is not None
-            else None,
+            norm=to_jax_state(module.norm) if module.norm is not None else None,
         )
 
     elif isinstance(module, nn.TransformerDecoder):
         return DecoderState(
             layers=[to_jax_state(layer) for layer in module.layers],
-            norm=to_jax_state(module.norm)
-            if module.norm is not None
-            else None,
+            norm=to_jax_state(module.norm) if module.norm is not None else None,
         )
 
     elif isinstance(module, nn.Transformer):
@@ -267,11 +273,15 @@ def to_jax_state(module: nn.Module) -> NamedTuple:
         return T5DenseState(
             wi=LinearState(
                 weights=jnp.array(module.wi.weight.detach()),
-                bias=jnp.array(module.wi.bias.detach()) if module.wi.bias is not None else None,
+                bias=jnp.array(module.wi.bias.detach())
+                if module.wi.bias is not None
+                else None,
             ),
             wo=LinearState(
                 weights=jnp.array(module.wo.weight.detach()),
-                bias=jnp.array(module.wo.bias.detach()) if module.wo.bias is not None else None,
+                bias=jnp.array(module.wo.bias.detach())
+                if module.wo.bias is not None
+                else None,
             ),
         )
     elif isinstance(module, T5LayerFF):
@@ -329,7 +339,7 @@ def to_jax_state(module: nn.Module) -> NamedTuple:
                 embedding=to_jax_state(module.embed_tokens),
                 blocks=[to_jax_state(block) for block in module.block],
                 norm=RMSNormState(jnp.array(module.final_layer_norm.weight.detach())),
-            )  
+            )
 
     elif isinstance(module, T5Model):
         # Assumes shared embedding is already set in T5Model via self.set_input_embeddings
@@ -354,7 +364,7 @@ def to_jax_state(module: nn.Module) -> NamedTuple:
             weights=jnp.array(module.weight.detach().transpose(0, 1)),
             bias=jnp.array(module.bias.detach()) if module.bias is not None else None,
         )
-    
+
     elif isinstance(module, GPT2MLP):
         return GPT2DenseState(
             c_fc=to_jax_state(module.c_fc),
@@ -364,10 +374,8 @@ def to_jax_state(module: nn.Module) -> NamedTuple:
     elif isinstance(module, GPT2Attention):
         return GPT2AttentionState(
             c_attn=to_jax_state(module.c_attn),
-            c_proj= to_jax_state(module.c_proj),       
+            c_proj=to_jax_state(module.c_proj),
         )
 
     else:
-        raise NotImplementedError(
-            f"to_jax_state not implemented for {type(module)}"
-        )
+        raise NotImplementedError(f"to_jax_state not implemented for {type(module)}")

@@ -2,6 +2,7 @@ import jax
 from attention import *
 from base import Array
 
+
 class EncoderLayer(BaseModule):
     """
     Norm-first Transformer encoder layer

@@ -102,6 +102,7 @@ def test_multihead_attn_kv_cache(n_heads, emb_size, batch_size):
 
         assert np.allclose(y, y2, atol=TOL), f"y = {y}, y2 = {y2}"
 
+
 @pytest.mark.parametrize(
     "n_heads, emb_size, batch_size", [(1, 1, 1), (1, 2, 3), (2, 4, 3), (8, 16, 8)]
 )
@@ -138,6 +139,7 @@ def test_attention_with_mask(n_heads, emb_size, batch_size):
     assert (
         torch_params == jax_params
     ), f"Got different number of parameters: {torch_params} vs {jax_params}"
+
 
 @pytest.mark.paramtest
 def test_cross_attention():

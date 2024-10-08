@@ -24,7 +24,6 @@ def get_nbr_params(
     return jax_params, torch_params
 
 
-
 # https://github.com/EdwardDixon/snake/blob/master/snake/activations.py
 class TorchSnake(nn.Module):
     def __init__(self, in_features, a=None, trainable=True):

@@ -21,6 +21,24 @@ from utils import count_params, torch_count_params
 from log_utils import logger
 
 
+def torch_debug_hook(module, input, output):
+    logger.debug(
+        f"For module: {module.__class__.__name__} got input: {type(input)}, output: {type(output)}"
+    )
+    logger.debug(
+        f"Called {module.__class__.__name__}: {input[0].shape} -> {output.shape}"
+    )
+
+
+def jax_debug_hook(module, input, output):
+    logger.debug(
+        f"For module: {module.__class__.__name__} got input: {type(input)}, output: {type(output)}"
+    )
+    logger.debug(
+        f"Called {module.__class__.__name__}: {input[1].shape} -> {output.shape}"
+    )
+
+
 MODEL_NAME = "gpt2"
 BATCH_SIZE = 2
 SEQ_LEN = 8
@@ -28,9 +46,8 @@ EMBED_SIZE = 768
 
 test_shape = (BATCH_SIZE, SEQ_LEN, EMBED_SIZE)
 
-
-
 GPT2_REPO = "openai-community/gpt2"
+
 
 @fixture(scope="function")
 def gpt2_config() -> GPT2Config:
@@ -57,7 +74,7 @@ def test_load_gpt2(gpt2_config: GPT2Config):
     jax_n_params = count_params(jax_state)
 
     assert torch_n_params == jax_n_params
-    
+
 
 # Redundant, already running in test_compare.py:204
 def test_gpt2_norm(gpt2_config: GPT2Config):
@@ -76,11 +93,17 @@ def test_gpt2_norm(gpt2_config: GPT2Config):
 
     jax_out = jax_norm(jax_state, x_jax)
 
-    assert torch_out.shape == jax_out.shape, f"torch_out.shape = {torch_out.shape}, jax_out.shape = {jax_out.shape}"
-    assert jnp.allclose(jax_out, torch_out.numpy(), atol=1e-5), f"jax_out = {jax_out}, torch_out = {torch_out}"
+    assert (
+        torch_out.shape == jax_out.shape
+    ), f"torch_out.shape = {torch_out.shape}, jax_out.shape = {jax_out.shape}"
+    assert jnp.allclose(
+        jax_out, torch_out.numpy(), atol=1e-5
+    ), f"jax_out = {jax_out}, torch_out = {torch_out}"
 
 
 def test_gpt2_attention(gpt2_config: GPT2Config):
+    rng = jax.random.PRNGKey(0)
+
     x = torch.randn((BATCH_SIZE, SEQ_LEN, gpt2_config.n_embd), requires_grad=False)
     x_jax = jnp.array(x)
 
@@ -97,25 +120,27 @@ def test_gpt2_attention(gpt2_config: GPT2Config):
 
     # import code; code.interact(local=locals())
 
-    assert torch_out.shape == jax_out.shape, f"torch_out.shape = {torch_out.shape}, jax_out.shape = {jax_out.shape}"
-    assert jnp.allclose(jax_out, torch_out.numpy(), atol=1e-5), f"jax_out = {jax_out}, torch_out = {torch_out}"
+    assert (
+        torch_out.shape == jax_out.shape
+    ), f"torch_out.shape = {torch_out.shape}, jax_out.shape = {jax_out.shape}"
+    assert jnp.allclose(
+        jax_out, torch_out.numpy(), atol=1e-5
+    ), f"jax_out = {jax_out}, torch_out = {torch_out}"
 
 
 def test_gpt2_block():
-    pass 
+    pass
 
 
 def test_gpt2_dense(gpt2_config: GPT2Config):
     # forward debug hook
-    def debug_hook(module, input, output):
-        print(f"{module.__class__.__name__}: {input[0].shape} -> {output.shape}")
 
     x = torch.randn((1, EMBED_SIZE), requires_grad=False) * 10
     x_jax = jnp.array(x)
 
     gpt2_dense = GPT2MLP(4 * EMBED_SIZE, gpt2_config).eval()
 
-    gpt2_dense.register_forward_hook(debug_hook)
+    gpt2_dense.register_forward_hook(torch_debug_hook)
 
     with torch.no_grad():
         torch_out = gpt2_dense(x)
@@ -123,10 +148,16 @@ def test_gpt2_dense(gpt2_config: GPT2Config):
     # Jax
     rng = jax.random.PRNGKey(0)
 
-    jax_state = to_jax_state(gpt2_dense)    
+    jax_state = to_jax_state(gpt2_dense)
     jax_gpt2_dense = GPT2Dense(4 * EMBED_SIZE)
+
+    jax_gpt2_dense.register_forward_hook(jax_debug_hook)
 
     jax_out = jax_gpt2_dense(jax_state, x_jax, rng)
 
-    assert torch_out.shape == jax_out.shape, f"torch_out.shape = {torch_out.shape}, jax_out.shape = {jax_out.shape}"
-    assert jnp.allclose(jax_out, torch_out.numpy(), atol=1e-5), f"jax_out = {jax_out}, torch_out = {torch_out}"
+    assert (
+        torch_out.shape == jax_out.shape
+    ), f"torch_out.shape = {torch_out.shape}, jax_out.shape = {jax_out.shape}"
+    assert jnp.allclose(
+        jax_out, torch_out.numpy(), atol=1e-5
+    ), f"jax_out = {jax_out}, torch_out = {torch_out}"
