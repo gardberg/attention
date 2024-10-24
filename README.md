@@ -90,6 +90,8 @@ Run formatting with `black .`
   - [x] Dense
   - [x] Attention
     - [x] Fix interfering test (fixed by limiting the scope of each test to function)
+  - [x] GPT2Block
+  - [ ] GPT2Model
 
 - [ ] Use torch hooks to debug tests
 - [ ] Implement hooks for basemodel

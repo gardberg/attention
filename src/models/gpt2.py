@@ -1,13 +1,21 @@
 from base import Array, BaseModule
 from transformer import Embedding
 from attention import Linear, LayerNorm, create_causal_mask
-from states import GPT2DenseState, GPT2AttentionState
+from states import GPT2DenseState, GPT2AttentionState, GPT2BlockState
 from act import gelu_new, dropout, softmax
 
 import jax.numpy as jnp
 
 
+# GPT2Model with LM head
 class GPT2(BaseModule):
+    def __init__(self, vocab_size: int = 50257, emb_size: int = 768):
+        super().__init__()
+
+        self.lm_head = Linear(emb_size, vocab_size, bias=False)
+
+
+class GPT2BaseModel(BaseModule):
     def __init__(self, vocab_size: int = 50257, emb_size: int = 768):
         super().__init__()
 
@@ -18,7 +26,6 @@ class GPT2(BaseModule):
         self.wte = Embedding(vocab_size, emb_size)
         self.wpe = Embedding(self.context_len, emb_size)
 
-        self.lm_head = Linear(emb_size, vocab_size, bias=False)
 
 
 # activation: gelu_new
@@ -34,6 +41,30 @@ class GPT2Block(BaseModule):
         self.ln_2 = LayerNorm(emb_size)
 
         self.mlp = GPT2Dense(emb_size * 4, emb_size)
+
+    def forward(
+        self,
+        states: GPT2BlockState,
+        x: Array["batch_size, seq_len, emb_size"],
+        rng: Array,
+        training: bool = False,
+    ) -> Array:
+        
+        residual = x
+
+        x = self.ln_1(states.ln_1, x)
+        x = self.attn(states.attn, x, rng, training)
+
+        x += residual
+
+        residual = x
+
+        x = self.ln_2(states.ln_2, x)
+        x = self.mlp(states.mlp, x, rng, training)
+
+        x += residual
+
+        return x
 
 
 # Only self attention

@@ -186,6 +186,13 @@ class GPT2AttentionState(NamedTuple):
     c_proj: LinearState
 
 
+class GPT2BlockState(NamedTuple):
+    ln_1: LayerNormState
+    attn: GPT2AttentionState
+    ln_2: LayerNormState
+    mlp: GPT2DenseState
+
+
 def to_jax_state(module: nn.Module) -> NamedTuple:
     """
     Extracts parameters from an nn.Module to a NamedTuple state
@@ -375,6 +382,14 @@ def to_jax_state(module: nn.Module) -> NamedTuple:
         return GPT2AttentionState(
             c_attn=to_jax_state(module.c_attn),
             c_proj=to_jax_state(module.c_proj),
+        )
+
+    elif isinstance(module, GPT2Block):
+        return GPT2BlockState(
+            ln_1=to_jax_state(module.ln_1),
+            attn=to_jax_state(module.attn),
+            ln_2=to_jax_state(module.ln_2),
+            mlp=to_jax_state(module.mlp),
         )
 
     else:
