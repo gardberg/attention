@@ -1,10 +1,11 @@
 from base import Array, BaseModule
 from transformer import Embedding
 from attention import Linear, LayerNorm, create_causal_mask
-from states import GPT2DenseState, GPT2AttentionState, GPT2BlockState
+from states import GPT2DenseState, GPT2AttentionState, GPT2BlockState, GPT2BaseModelState
 from act import gelu_new, dropout, softmax
 
 import jax.numpy as jnp
+import jax
 
 
 # GPT2Model with LM head
@@ -12,11 +13,10 @@ class GPT2(BaseModule):
     def __init__(self, vocab_size: int = 50257, emb_size: int = 768):
         super().__init__()
 
-        self.lm_head = Linear(emb_size, vocab_size, bias=False)
 
 
 class GPT2BaseModel(BaseModule):
-    def __init__(self, vocab_size: int = 50257, emb_size: int = 768):
+    def __init__(self, vocab_size: int = 50257, emb_size: int = 768, n_layers: int = 12):
         super().__init__()
 
         self.vocab_size = vocab_size
@@ -26,6 +26,32 @@ class GPT2BaseModel(BaseModule):
         self.wte = Embedding(vocab_size, emb_size)
         self.wpe = Embedding(self.context_len, emb_size)
 
+        self.blocks = [GPT2Block(emb_size) for _ in range(n_layers)]
+        self.ln_f = LayerNorm(emb_size)
+
+    # token input ids to logits
+    def forward(
+        self,   
+        state: GPT2BaseModelState,
+        input_ids: Array["batch_size, seq_len"],
+        rng: Array,
+        training: bool = False,
+    ) -> Array["batch_size, seq_len, emb_size"]:
+        
+        input_embeds = self.wte(state.wte, input_ids)
+
+        position_ids = jnp.arange(input_ids.shape[-1])
+        position_embeds = self.wpe(state.wpe, position_ids)
+
+        x = input_embeds + position_embeds
+        x = dropout(x, 0.1, rng, training)
+
+        for i, block in enumerate(self.blocks):
+            x = block(state.blocks[i], x, rng, training)
+
+        x = self.ln_f(state.ln_f, x)
+
+        return x
 
 
 # activation: gelu_new
@@ -48,19 +74,20 @@ class GPT2Block(BaseModule):
         x: Array["batch_size, seq_len, emb_size"],
         rng: Array,
         training: bool = False,
-    ) -> Array:
-        
+    ) -> Array["batch_size, seq_len, emb_size"]:
+        rng1, rng2 = jax.random.split(rng)
+
         residual = x
 
         x = self.ln_1(states.ln_1, x)
-        x = self.attn(states.attn, x, rng, training)
+        x = self.attn(states.attn, x, rng1, training)
 
         x += residual
 
         residual = x
 
         x = self.ln_2(states.ln_2, x)
-        x = self.mlp(states.mlp, x, rng, training)
+        x = self.mlp(states.mlp, x, rng2, training)
 
         x += residual
 
@@ -93,13 +120,13 @@ class GPT2Attention(BaseModule):
     # TODO: kv cache
     def forward(
         self,
-        states: GPT2AttentionState,
+        state: GPT2AttentionState,
         x: Array["batch_size, seq_len, emb_size"],
         rng: Array,
         training: bool = False,
-    ) -> Array:
+    ) -> Array["batch_size, seq_len, emb_size"]:
         # q, k, v.shape: (batch_size, seq_len, emb_size)
-        query, key, value = jnp.split(self.c_attn(states.c_attn, x), 3, axis=-1)
+        query, key, value = jnp.split(self.c_attn(state.c_attn, x), 3, axis=-1)
 
         query = self._split_heads(query)
         key = self._split_heads(key)
@@ -122,7 +149,7 @@ class GPT2Attention(BaseModule):
         attn_output = jnp.matmul(attn_weights, value)
 
         attn_output = self._merge_heads(attn_output)
-        attn_output = self.c_proj(states.c_proj, attn_output)
+        attn_output = self.c_proj(state.c_proj, attn_output)
         attn_output = dropout(attn_output, 0.1, rng, training)
 
         return attn_output
@@ -152,15 +179,15 @@ class GPT2Dense(BaseModule):
 
     def forward(
         self,
-        states: GPT2DenseState,
+        state: GPT2DenseState,
         x: Array["..., emb_size"],
         rng: Array,
         training: bool = False,
-    ) -> Array:
+    ) -> Array["..., emb_size"]:
         # out.shape: (..., emb_size)
-        x = self.c_fc(states.c_fc, x)
+        x = self.c_fc(state.c_fc, x)
         x = gelu_new(x)
-        x = self.c_proj(states.c_proj, x)
+        x = self.c_proj(state.c_proj, x)
         if training:
             x = dropout(x, 0.1, rng)
         out = x

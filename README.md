@@ -91,7 +91,8 @@ Run formatting with `black .`
   - [x] Attention
     - [x] Fix interfering test (fixed by limiting the scope of each test to function)
   - [x] GPT2Block
-  - [ ] GPT2Model
+  - [x] GPT2Model
+  - [ ] GPT2 Generation
 
 - [ ] Use torch hooks to debug tests
 - [ ] Implement hooks for basemodel

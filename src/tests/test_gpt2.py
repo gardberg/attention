@@ -16,7 +16,7 @@ import pytest
 from pytest import fixture
 from typing import Tuple, Union
 
-from models.gpt2 import GPT2, GPT2Block, GPT2Dense
+from models.gpt2 import GPT2BaseModel, GPT2Block, GPT2Dense
 from models.gpt2 import GPT2Attention as JaxGPT2Attention
 from attention import LayerNorm
 from states import to_jax_state
@@ -45,7 +45,7 @@ def torch_debug_hook(module, input, output):
     )
 
     logger.debug(
-        f"Called {module.__class__.__name__}: {input_shapes} -> {output_shapes}"
+        f"Called {module.__class__.__name__} with shapes: {input_shapes} -> {output_shapes}"
     )
 
 
@@ -204,6 +204,35 @@ def test_gpt2_block(gpt2_config: GPT2Config):
     jax_gpt2_block.register_forward_hook(jax_debug_hook)
 
     jax_out = jax_gpt2_block(jax_state, x_jax, rng)
+
+    assert (
+        torch_out.shape == jax_out.shape
+    ), f"torch_out.shape = {torch_out.shape}, jax_out.shape = {jax_out.shape}"
+    assert jnp.allclose(
+        jax_out, torch_out.numpy(), atol=1e-5
+    ), f"jax_out = {jax_out}, torch_out = {torch_out}"
+
+
+def test_gpt2_base_model(gpt2_config: GPT2Config):
+    rng = jax.random.PRNGKey(0)
+
+    input_ids = torch.randint(0, gpt2_config.vocab_size, (BATCH_SIZE, SEQ_LEN))
+    jax_input_ids = jnp.array(input_ids, dtype=jnp.int64)
+   
+    torch_gpt_base_model = TorchGPT2Model(gpt2_config).eval()
+
+    torch_gpt_base_model.register_forward_hook(torch_debug_hook)
+
+    with torch.no_grad():
+        torch_out = torch_gpt_base_model(input_ids)[0]
+
+    # Jax
+    jax_gpt_base_model = GPT2BaseModel(vocab_size=gpt2_config.vocab_size, emb_size=gpt2_config.n_embd)
+    jax_state = to_jax_state(torch_gpt_base_model)
+
+    jax_gpt_base_model.register_forward_hook(jax_debug_hook)
+
+    jax_out = jax_gpt_base_model(jax_state, jax_input_ids, rng)
 
     assert (
         torch_out.shape == jax_out.shape

@@ -4,7 +4,6 @@ from abc import ABC, abstractmethod
 from typing import TypeVar, Generic, List, Callable, Dict, Any, Tuple
 from jax.numpy import ndarray
 
-
 class Array(ndarray, Generic[TypeVar("Shape")]):
     ...
 

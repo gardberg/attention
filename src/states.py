@@ -12,7 +12,7 @@ from transformers.models.t5.modeling_t5 import (
     T5Model,
     T5ForConditionalGeneration,
 )
-from transformers.models.gpt2.modeling_gpt2 import GPT2Block, GPT2MLP, GPT2Attention
+from transformers.models.gpt2.modeling_gpt2 import GPT2Block, GPT2MLP, GPT2Attention, GPT2Model
 from transformers.pytorch_utils import Conv1D
 from base import Array
 
@@ -191,6 +191,13 @@ class GPT2BlockState(NamedTuple):
     attn: GPT2AttentionState
     ln_2: LayerNormState
     mlp: GPT2DenseState
+
+
+class GPT2BaseModelState(NamedTuple):
+    wte: EmbeddingState
+    wpe: EmbeddingState
+    blocks: list[GPT2BlockState]
+    ln_f: LayerNormState
 
 
 def to_jax_state(module: nn.Module) -> NamedTuple:
@@ -390,6 +397,14 @@ def to_jax_state(module: nn.Module) -> NamedTuple:
             attn=to_jax_state(module.attn),
             ln_2=to_jax_state(module.ln_2),
             mlp=to_jax_state(module.mlp),
+        )
+
+    elif isinstance(module, GPT2Model):
+        return GPT2BaseModelState(
+            wte=to_jax_state(module.wte),
+            wpe=to_jax_state(module.wpe),
+            blocks=[to_jax_state(block) for block in module.h],
+            ln_f=to_jax_state(module.ln_f),
         )
 
     else:
