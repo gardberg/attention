@@ -129,6 +129,10 @@ Make sure local venv is activated, which contains poetry:
 
 `poetry install` - install dependencies specified in `pyproject.toml`
 
+`source .venv/bin/activate`
+`uv add <package>`
+`uv run pytest`
+
 Have added pytest config options to `pyproject.toml` so that they are set by default. E.g. `log_cli = true` 
 
 ### Links

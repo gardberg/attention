@@ -10,3 +10,4 @@ models/*
 hf_hub
 /tmp
 .python-version
+poetry_backup
