@@ -235,7 +235,7 @@ def test_gpt2_base_model(gpt2_config: GPT2Config):
     rng = jax.random.PRNGKey(0)
 
     input_ids = torch.randint(0, gpt2_config.vocab_size, (BATCH_SIZE, SEQ_LEN))
-    jax_input_ids = jnp.array(input_ids, dtype=jnp.int64)
+    jax_input_ids = jnp.array(input_ids, dtype=jnp.int32)
 
     torch_gpt_base_model = TorchGPT2Model(gpt2_config).eval()
     torch_n_params = torch_count_params(torch_gpt_base_model)

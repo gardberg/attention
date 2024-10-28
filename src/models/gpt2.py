@@ -33,9 +33,7 @@ class GPT2(BaseModule):
         training: bool = False,
     ) -> Array["batch_size, context_len, vocab_size"]:
         x = self.transformer(state.transformer, input_ids, rng, training)
-        return self.lm_head(
-            state.lm_head, x
-        )  # use shared weights between lm_head and wte
+        return self.lm_head(state.lm_head, x)
 
     def generate(
         self,
@@ -44,21 +42,31 @@ class GPT2(BaseModule):
         rng: Array,
         max_new_tokens: int = 50,
     ) -> Array["context_len + max_new_tokens,"]:
-        input_ids = input_ids.reshape(1, -1)
 
-        pred_token_ids = jnp.concatenate(
-            [jnp.array([[self.eos_bos_token_id]]), input_ids], axis=1
-        )
+        pred_token_ids = self.prepare_inputs(input_ids)
+
+        for next_token_id in self.generate_tokens(state, input_ids, rng, max_new_tokens):
+            pred_token_ids = jnp.concatenate(
+                [pred_token_ids, next_token_id.reshape(1, 1)], axis=1
+            )
+        return pred_token_ids
+
+    def generate_tokens(
+        self,
+        state: GPT2State,
+        input_ids: Array["context_len,"],
+        rng: Array,
+        max_new_tokens: int = 50,
+    ):
+        """Yields next token ids one at a time."""
+
+        pred_token_ids = self.prepare_inputs(input_ids)
         nbr_new_tokens = 0
 
         while (nbr_new_tokens < max_new_tokens) and (
             pred_token_ids.shape[-1] < self.transformer.context_len
         ):
-            logits = self.forward(state, pred_token_ids, rng, training=False)
-
-            logits = logits[:, -1, :]
-
-            probs = softmax_stable(logits, dim=-1)
+            probs = self.calc_token_probs(state, pred_token_ids, rng)
             next_token_id = self.predict_next_token(probs)
 
             pred_token_ids = jnp.concatenate(
@@ -66,9 +74,27 @@ class GPT2(BaseModule):
             )
             nbr_new_tokens += 1
 
+            yield next_token_id
+
             if next_token_id == self.eos_bos_token_id:
                 break
 
+    def calc_token_probs(
+        self, state: GPT2State, pred_token_ids: Array["1, seq_len"], rng: Array
+    ) -> Array["1, vocab_size"]:
+        logits: Array["1, seq_len, vocab_size"] = self.forward(
+            state, pred_token_ids, rng
+        )
+        return softmax_stable(logits[:, -1, :], dim=-1)
+
+    def prepare_inputs(
+        self, input_ids: Array["context_len,"]
+    ) -> Array["1, context_len + 1"]:
+        # Add batch dim and prepend eos bos token
+        input_ids = input_ids.reshape(1, -1)
+        pred_token_ids = jnp.concatenate(
+            [jnp.array([[self.eos_bos_token_id]]), input_ids], axis=1
+        )
         return pred_token_ids
 
     def predict_next_token(self, token_probs: Array["1, vocab_size"]) -> Array["1"]:
