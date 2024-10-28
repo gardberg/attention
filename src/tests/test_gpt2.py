@@ -161,10 +161,6 @@ def test_gpt2_attention(gpt2_config: GPT2Config):
     ), f"jax_out = {jax_out}, torch_out = {torch_out}"
 
 
-def test_gpt2_block():
-    pass
-
-
 def test_gpt2_dense(gpt2_config: GPT2Config):
     # forward debug hook
 
@@ -341,7 +337,7 @@ def test_gpt2_generate(
     jax_state = to_jax_state(lm_head_model)
 
     jax_pred_token_ids = jax_lm_head_model.generate(
-        jax_state, jnp.array(input_ids), rng, max_new_tokens=max_new_tokens
+        jax_state, rng, jnp.array(input_ids), max_new_tokens=max_new_tokens
     )
 
     assert (

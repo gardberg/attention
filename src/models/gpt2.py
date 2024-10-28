@@ -13,7 +13,7 @@ from log_utils import logger
 
 import jax.numpy as jnp
 import jax
-
+from typing import Optional
 
 # GPT2Model with LM head
 class GPT2(BaseModule):
@@ -38,14 +38,14 @@ class GPT2(BaseModule):
     def generate(
         self,
         state: GPT2State,
-        input_ids: Array["context_len,"],
         rng: Array,
+        input_ids: Optional[Array["context_len,"]] = None,
         max_new_tokens: int = 50,
     ) -> Array["context_len + max_new_tokens,"]:
 
         pred_token_ids = self.prepare_inputs(input_ids)
 
-        for next_token_id in self.generate_tokens(state, input_ids, rng, max_new_tokens):
+        for next_token_id in self.generate_tokens(state, rng, input_ids, max_new_tokens):
             pred_token_ids = jnp.concatenate(
                 [pred_token_ids, next_token_id.reshape(1, 1)], axis=1
             )
@@ -54,8 +54,8 @@ class GPT2(BaseModule):
     def generate_tokens(
         self,
         state: GPT2State,
-        input_ids: Array["context_len,"],
         rng: Array,
+        input_ids: Optional[Array["context_len,"]] = None,
         max_new_tokens: int = 50,
     ):
         """Yields next token ids one at a time."""
@@ -88,8 +88,11 @@ class GPT2(BaseModule):
         return softmax_stable(logits[:, -1, :], dim=-1)
 
     def prepare_inputs(
-        self, input_ids: Array["context_len,"]
+        self, input_ids: Optional[Array["context_len,"]] = None
     ) -> Array["1, context_len + 1"]:
+        if input_ids is None:
+            return jnp.array([[self.eos_bos_token_id]])
+
         # Add batch dim and prepend eos bos token
         input_ids = input_ids.reshape(1, -1)
         pred_token_ids = jnp.concatenate(
