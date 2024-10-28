@@ -53,6 +53,15 @@ def test_softmax(shape: tuple[int, ...]):
     assert np.allclose(y, y_torch, atol=TOL), f"y = {y}, y_torch = {y_torch}"
 
 
+def test_softmax_matching():
+    x = torch.randn(1, 50257)  # vocab size
+    torch_probs = torch.nn.functional.softmax(x, dim=-1)
+    
+    jax_probs = softmax(jnp.array(x), dim=-1)
+    
+    assert jnp.allclose(jax_probs, torch_probs.numpy(), atol=1e-5)
+
+
 @pytest.mark.parametrize("shape", [(4, 4), (4, 4, 4)])
 def test_softmax_stable(shape: tuple[int, ...]):
     x = torch.randn(shape)

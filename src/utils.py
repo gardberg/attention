@@ -3,6 +3,7 @@ from base import Array
 from typing import Union, NamedTuple
 from jax import Array as JaxArray
 import torch.nn as nn
+from log_utils import logger
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 os.environ["TIKTOKEN_CACHE_DIR"] = os.path.join(ROOT_DIR, ".cache")
@@ -24,7 +25,7 @@ def state_to_str(state: Union[NamedTuple, Array, bool], indent=0):
     if state is None:
         return "None"
 
-    if isinstance(state, Array):
+    if isinstance(state, Array) or isinstance(state, JaxArray):
         return f"{state.shape}"
 
     if isinstance(state, bool):
@@ -39,24 +40,34 @@ def state_to_str(state: Union[NamedTuple, Array, bool], indent=0):
 
 
 # TODO: Atm counts all params. How do we count only learnable?
-def count_params(state) -> int:
-    # print(f"Calling count_params with state = {type(state)}:{state}")
+def count_params(state, seen_arrays=None) -> int:
+    """Count unique parameters in a state object."""
+    if seen_arrays is None:
+        seen_arrays = set()
+        
     if isinstance(state, int):
         return 1
 
-    if isinstance(state, JaxArray):
-        return state.size
+    if isinstance(state, JaxArray) or isinstance(state, Array):
+        # Get unique identifier using the array's data buffer
+        array_id = id(state)
+        
+        if array_id not in seen_arrays:
+            seen_arrays.add(array_id)
+            return state.size
+        logger.debug(f"Found duplicate array in {state.__class__.__name__} with id {array_id}")
+        return 0
 
     if isinstance(state, bool):
         return 0
 
     if isinstance(state, list):
-        return sum([count_params(s) for s in state])
+        return sum([count_params(s, seen_arrays) for s in state])
 
     if state is None:
         return 0
 
-    return sum([count_params(v) for v in state._asdict().values()])
+    return sum([count_params(v, seen_arrays) for v in state._asdict().values()])
 
 
 # For torch we count all params that require grad. Some, in e.g. batchnorm, are not learnabe,
@@ -66,5 +77,5 @@ def torch_count_params(model: nn.Module, print_names: bool = False) -> int:
     s = sum(p.numel() for p in model.parameters() if p.requires_grad)
     if print_names:
         for name, p in model.named_parameters():
-            print(name, p.numel())
+            print(name, p.shape, p.numel())
     return s

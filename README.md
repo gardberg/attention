@@ -94,8 +94,8 @@ Run formatting with `black .`
   - [x] GPT2Model
   - [ ] GPT2 Generation
 
-- [ ] Use torch hooks to debug tests
-- [ ] Implement hooks for basemodel
+- [x] Use torch hooks to debug tests
+- [x] Implement hooks for basemodel
 
 #### Improvements
 

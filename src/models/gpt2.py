@@ -1,8 +1,9 @@
 from base import Array, BaseModule
 from transformer import Embedding
 from attention import Linear, LayerNorm, create_causal_mask
-from states import GPT2DenseState, GPT2AttentionState, GPT2BlockState, GPT2BaseModelState
-from act import gelu_new, dropout, softmax
+from states import GPT2DenseState, GPT2AttentionState, GPT2BlockState, GPT2BaseModelState, GPT2State
+from act import gelu_new, dropout, softmax_stable
+from log_utils import logger
 
 import jax.numpy as jnp
 import jax
@@ -12,7 +13,59 @@ import jax
 class GPT2(BaseModule):
     def __init__(self, vocab_size: int = 50257, emb_size: int = 768):
         super().__init__()
+        
+        self.transformer = GPT2BaseModel(vocab_size, emb_size)
+        self.lm_head = Linear(emb_size, vocab_size, bias=False)
 
+        self.eos_bos_token_id = 50256
+
+    def forward(
+        self,
+        state: GPT2State,
+        input_ids: Array["batch_size, context_len"],
+        rng: Array,
+        training: bool = False,
+    ) -> Array["batch_size, context_len, vocab_size"]:
+        x = self.transformer(state.transformer, input_ids, rng, training)
+        return self.lm_head(state.lm_head, x) # use shared weights between lm_head and wte
+
+    def generate(
+        self,
+        state: GPT2State,
+        input_ids: Array["context_len,"],
+        rng: Array,
+        max_new_tokens: int = 50,
+    ) -> Array["context_len + max_new_tokens,"]:
+        input_ids = input_ids.reshape(1, -1)
+        
+        pred_token_ids = jnp.concatenate([jnp.array([[self.eos_bos_token_id]]), input_ids], axis=1)
+        nbr_new_tokens = 0
+
+        while (nbr_new_tokens < max_new_tokens) and (pred_token_ids.shape[-1] < self.transformer.context_len):
+            logits = self.forward(state, pred_token_ids, rng, training=False)
+            
+            logits = logits[:, -1, :]
+            
+            probs = softmax_stable(logits, dim=-1)
+            next_token_id = self.predict_next_token(probs)
+            
+            pred_token_ids = jnp.concatenate([pred_token_ids, next_token_id.reshape(1, 1)], axis=1)
+            nbr_new_tokens += 1
+
+            if next_token_id == self.eos_bos_token_id:
+                break
+
+        return pred_token_ids
+            
+    def predict_next_token(self, token_probs: Array["1, vocab_size"]) -> Array["1"]:
+        return jnp.argmax(token_probs, axis=-1)
+
+    def init_state(self, rng: Array) -> GPT2State:
+        rngs = jax.random.split(rng, 2)
+        return GPT2State(
+            transformer=self.transformer.init_state(rngs[0]),
+            lm_head=self.lm_head.init_state(rngs[1]),
+        )
 
 
 class GPT2BaseModel(BaseModule):
@@ -33,10 +86,11 @@ class GPT2BaseModel(BaseModule):
     def forward(
         self,   
         state: GPT2BaseModelState,
-        input_ids: Array["batch_size, seq_len"],
+        input_ids: Array["batch_size, context_len"],
         rng: Array,
         training: bool = False,
-    ) -> Array["batch_size, seq_len, emb_size"]:
+    ) -> Array["batch_size, context_len, emb_size"]:
+        rng1, rng2 = jax.random.split(rng)
         
         input_embeds = self.wte(state.wte, input_ids)
 
@@ -44,14 +98,23 @@ class GPT2BaseModel(BaseModule):
         position_embeds = self.wpe(state.wpe, position_ids)
 
         x = input_embeds + position_embeds
-        x = dropout(x, 0.1, rng, training)
+        x = dropout(x, 0.1, rng1, training)
 
         for i, block in enumerate(self.blocks):
-            x = block(state.blocks[i], x, rng, training)
+            x = block(state.blocks[i], x, rng2, training)
 
         x = self.ln_f(state.ln_f, x)
 
         return x
+
+    def init_state(self, rng: Array) -> GPT2BaseModelState:
+        rngs = jax.random.split(rng, 3 + len(self.blocks))
+        return GPT2BaseModelState(
+            wte=self.wte.init_state(rngs[0]),
+            wpe=self.wpe.init_state(rngs[1]),
+            blocks=[block.init_state(rngs[i + 2]) for i, block in enumerate(self.blocks)],
+            ln_f=self.ln_f.init_state(rngs[-1]),
+        )
 
 
 # activation: gelu_new
@@ -71,10 +134,10 @@ class GPT2Block(BaseModule):
     def forward(
         self,
         states: GPT2BlockState,
-        x: Array["batch_size, seq_len, emb_size"],
+        x: Array["batch_size, context_len, emb_size"],
         rng: Array,
         training: bool = False,
-    ) -> Array["batch_size, seq_len, emb_size"]:
+    ) -> Array["batch_size, context_len, emb_size"]:
         rng1, rng2 = jax.random.split(rng)
 
         residual = x
@@ -93,6 +156,14 @@ class GPT2Block(BaseModule):
 
         return x
 
+    def init_state(self, rng: Array) -> GPT2BlockState:
+        rngs = jax.random.split(rng, 4)
+        return GPT2BlockState(
+            ln_1=self.ln_1.init_state(rngs[0]),
+            attn=self.attn.init_state(rngs[1]),
+            ln_2=self.ln_2.init_state(rngs[2]),
+            mlp=self.mlp.init_state(rngs[3]),
+        )
 
 # Only self attention
 class GPT2Attention(BaseModule):
@@ -121,11 +192,12 @@ class GPT2Attention(BaseModule):
     def forward(
         self,
         state: GPT2AttentionState,
-        x: Array["batch_size, seq_len, emb_size"],
+        x: Array["batch_size, context_len, emb_size"],
         rng: Array,
         training: bool = False,
-    ) -> Array["batch_size, seq_len, emb_size"]:
-        # q, k, v.shape: (batch_size, seq_len, emb_size)
+    ) -> Array["batch_size, context_len, emb_size"]:
+        rng1, rng2 = jax.random.split(rng)
+        # q, k, v.shape: (batch_size, context_len, emb_size)
         query, key, value = jnp.split(self.c_attn(state.c_attn, x), 3, axis=-1)
 
         query = self._split_heads(query)
@@ -143,28 +215,35 @@ class GPT2Attention(BaseModule):
         mask_value = jnp.finfo(attn_logits.dtype).min
         attn_logits = jnp.where(causal_mask, attn_logits, mask_value)
 
-        attn_weights = softmax(attn_logits, dim=-1)
-        attn_weights = dropout(attn_weights, 0.1, rng, training)
+        attn_weights = softmax_stable(attn_logits, dim=-1)
+        attn_weights = dropout(attn_weights, 0.1, rng1, training)
 
         attn_output = jnp.matmul(attn_weights, value)
 
         attn_output = self._merge_heads(attn_output)
         attn_output = self.c_proj(state.c_proj, attn_output)
-        attn_output = dropout(attn_output, 0.1, rng, training)
+        attn_output = dropout(attn_output, 0.1, rng2, training)
 
         return attn_output
 
     def _split_heads(
-        self, x: Array["batch_size, seq_len, emb_size"]
-    ) -> Array["batch_size, n_heads, seq_len, head_dim"]:
+        self, x: Array["batch_size, context_len, emb_size"]
+    ) -> Array["batch_size, n_heads, context_len, head_dim"]:
         return x.reshape(x.shape[:-1] + (self.n_heads, self.head_dim)).transpose(
             0, 2, 1, 3
         )
 
     def _merge_heads(
-        self, x: Array["batch_size, n_heads, seq_len, head_dim"]
-    ) -> Array["batch_size, seq_len, emb_size"]:
+        self, x: Array["batch_size, n_heads, context_len, head_dim"]
+    ) -> Array["batch_size, context_len, emb_size"]:
         return x.transpose(0, 2, 1, 3).reshape(x.shape[0], x.shape[2], self.emb_size)
+
+    def init_state(self, rng: Array) -> GPT2AttentionState:
+        rngs = jax.random.split(rng, 2)
+        return GPT2AttentionState(
+            c_attn=self.c_attn.init_state(rngs[0]),
+            c_proj=self.c_proj.init_state(rngs[1]),
+        )
 
 
 class GPT2Dense(BaseModule):
@@ -192,3 +271,10 @@ class GPT2Dense(BaseModule):
             x = dropout(x, 0.1, rng)
         out = x
         return out
+
+    def init_state(self, rng: Array) -> GPT2DenseState:
+        rngs = jax.random.split(rng, 2)
+        return GPT2DenseState(
+            c_fc=self.c_fc.init_state(rngs[0]),
+            c_proj=self.c_proj.init_state(rngs[1]),
+        )

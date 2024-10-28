@@ -12,7 +12,13 @@ from transformers.models.t5.modeling_t5 import (
     T5Model,
     T5ForConditionalGeneration,
 )
-from transformers.models.gpt2.modeling_gpt2 import GPT2Block, GPT2MLP, GPT2Attention, GPT2Model
+from transformers.models.gpt2.modeling_gpt2 import (
+    GPT2Block,
+    GPT2MLP,
+    GPT2Attention,
+    GPT2Model,
+    GPT2LMHeadModel,
+)
 from transformers.pytorch_utils import Conv1D
 from base import Array
 
@@ -198,6 +204,11 @@ class GPT2BaseModelState(NamedTuple):
     wpe: EmbeddingState
     blocks: list[GPT2BlockState]
     ln_f: LayerNormState
+
+
+class GPT2State(NamedTuple):
+    transformer: GPT2BaseModelState
+    lm_head: LinearState
 
 
 def to_jax_state(module: nn.Module) -> NamedTuple:
@@ -405,6 +416,16 @@ def to_jax_state(module: nn.Module) -> NamedTuple:
             wpe=to_jax_state(module.wpe),
             blocks=[to_jax_state(block) for block in module.h],
             ln_f=to_jax_state(module.ln_f),
+        )
+
+    elif isinstance(module, GPT2LMHeadModel):
+        transformer_state = to_jax_state(module.transformer)
+        return GPT2State(
+            transformer=transformer_state,
+            lm_head=LinearState(
+                weights=transformer_state.wte.embeddings, # shared weights between lm_head and wte
+                bias=None,
+            )
         )
 
     else:
