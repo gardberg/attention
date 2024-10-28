@@ -4,8 +4,8 @@ from abc import ABC, abstractmethod
 from typing import TypeVar, Generic, List, Callable, Dict, Any, Tuple
 from jax.numpy import ndarray
 
-class Array(ndarray, Generic[TypeVar("Shape")]):
-    ...
+
+class Array(ndarray, Generic[TypeVar("Shape")]): ...
 
 
 class BaseModule(ABC):
@@ -17,8 +17,7 @@ class BaseModule(ABC):
         self.use_jit = use_jit
 
     @abstractmethod
-    def forward(self, *args, **kwargs) -> Array:
-        ...
+    def forward(self, *args, **kwargs) -> Array: ...
 
     def register_forward_hook(
         self, hook: Callable[[Any, Tuple[tuple, Dict[str, Any]], Array], None]

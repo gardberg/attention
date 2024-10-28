@@ -1,7 +1,13 @@
 from base import Array, BaseModule
 from transformer import Embedding
 from attention import Linear, LayerNorm, create_causal_mask
-from states import GPT2DenseState, GPT2AttentionState, GPT2BlockState, GPT2BaseModelState, GPT2State
+from states import (
+    GPT2DenseState,
+    GPT2AttentionState,
+    GPT2BlockState,
+    GPT2BaseModelState,
+    GPT2State,
+)
 from act import gelu_new, dropout, softmax_stable
 from log_utils import logger
 
@@ -13,7 +19,7 @@ import jax
 class GPT2(BaseModule):
     def __init__(self, vocab_size: int = 50257, emb_size: int = 768):
         super().__init__()
-        
+
         self.transformer = GPT2BaseModel(vocab_size, emb_size)
         self.lm_head = Linear(emb_size, vocab_size, bias=False)
 
@@ -27,7 +33,9 @@ class GPT2(BaseModule):
         training: bool = False,
     ) -> Array["batch_size, context_len, vocab_size"]:
         x = self.transformer(state.transformer, input_ids, rng, training)
-        return self.lm_head(state.lm_head, x) # use shared weights between lm_head and wte
+        return self.lm_head(
+            state.lm_head, x
+        )  # use shared weights between lm_head and wte
 
     def generate(
         self,
@@ -37,26 +45,32 @@ class GPT2(BaseModule):
         max_new_tokens: int = 50,
     ) -> Array["context_len + max_new_tokens,"]:
         input_ids = input_ids.reshape(1, -1)
-        
-        pred_token_ids = jnp.concatenate([jnp.array([[self.eos_bos_token_id]]), input_ids], axis=1)
+
+        pred_token_ids = jnp.concatenate(
+            [jnp.array([[self.eos_bos_token_id]]), input_ids], axis=1
+        )
         nbr_new_tokens = 0
 
-        while (nbr_new_tokens < max_new_tokens) and (pred_token_ids.shape[-1] < self.transformer.context_len):
+        while (nbr_new_tokens < max_new_tokens) and (
+            pred_token_ids.shape[-1] < self.transformer.context_len
+        ):
             logits = self.forward(state, pred_token_ids, rng, training=False)
-            
+
             logits = logits[:, -1, :]
-            
+
             probs = softmax_stable(logits, dim=-1)
             next_token_id = self.predict_next_token(probs)
-            
-            pred_token_ids = jnp.concatenate([pred_token_ids, next_token_id.reshape(1, 1)], axis=1)
+
+            pred_token_ids = jnp.concatenate(
+                [pred_token_ids, next_token_id.reshape(1, 1)], axis=1
+            )
             nbr_new_tokens += 1
 
             if next_token_id == self.eos_bos_token_id:
                 break
 
         return pred_token_ids
-            
+
     def predict_next_token(self, token_probs: Array["1, vocab_size"]) -> Array["1"]:
         return jnp.argmax(token_probs, axis=-1)
 
@@ -69,7 +83,9 @@ class GPT2(BaseModule):
 
 
 class GPT2BaseModel(BaseModule):
-    def __init__(self, vocab_size: int = 50257, emb_size: int = 768, n_layers: int = 12):
+    def __init__(
+        self, vocab_size: int = 50257, emb_size: int = 768, n_layers: int = 12
+    ):
         super().__init__()
 
         self.vocab_size = vocab_size
@@ -84,14 +100,14 @@ class GPT2BaseModel(BaseModule):
 
     # token input ids to logits
     def forward(
-        self,   
+        self,
         state: GPT2BaseModelState,
         input_ids: Array["batch_size, context_len"],
         rng: Array,
         training: bool = False,
     ) -> Array["batch_size, context_len, emb_size"]:
         rng1, rng2 = jax.random.split(rng)
-        
+
         input_embeds = self.wte(state.wte, input_ids)
 
         position_ids = jnp.arange(input_ids.shape[-1])
@@ -112,7 +128,9 @@ class GPT2BaseModel(BaseModule):
         return GPT2BaseModelState(
             wte=self.wte.init_state(rngs[0]),
             wpe=self.wpe.init_state(rngs[1]),
-            blocks=[block.init_state(rngs[i + 2]) for i, block in enumerate(self.blocks)],
+            blocks=[
+                block.init_state(rngs[i + 2]) for i, block in enumerate(self.blocks)
+            ],
             ln_f=self.ln_f.init_state(rngs[-1]),
         )
 
@@ -164,6 +182,7 @@ class GPT2Block(BaseModule):
             ln_2=self.ln_2.init_state(rngs[2]),
             mlp=self.mlp.init_state(rngs[3]),
         )
+
 
 # Only self attention
 class GPT2Attention(BaseModule):

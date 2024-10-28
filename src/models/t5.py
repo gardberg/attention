@@ -379,9 +379,9 @@ class T5Decoder(BaseModule):
             self.debug_states[f"post_block_cross_pos_bias_{i}"] = cross_pos_bias.copy()
 
         decoder_hidden_states_normed = self.norm(state.norm, decoder_hidden_states)
-        self.debug_states[
-            "decoder_hidden_states_normed"
-        ] = decoder_hidden_states_normed.copy()
+        self.debug_states["decoder_hidden_states_normed"] = (
+            decoder_hidden_states_normed.copy()
+        )
 
         dropped = dropout(
             decoder_hidden_states_normed, self.dropout_rate, rngs[-1], training=training
@@ -829,9 +829,9 @@ class T5MultiHeadAttention(BaseModule):
             key=self.key_dense.init_state(rngs[1]),
             value=self.value_dense.init_state(rngs[2]),
             output=self.out_dense.init_state(rngs[3]),
-            pos_emb=self.pos_emb.init_state(rngs[4])
-            if self.use_rel_attn_bias
-            else None,
+            pos_emb=(
+                self.pos_emb.init_state(rngs[4]) if self.use_rel_attn_bias else None
+            ),
         )
 
     def compute_pos_bias(

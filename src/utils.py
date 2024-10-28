@@ -44,18 +44,20 @@ def count_params(state, seen_arrays=None) -> int:
     """Count unique parameters in a state object."""
     if seen_arrays is None:
         seen_arrays = set()
-        
+
     if isinstance(state, int):
         return 1
 
     if isinstance(state, JaxArray) or isinstance(state, Array):
         # Get unique identifier using the array's data buffer
         array_id = id(state)
-        
+
         if array_id not in seen_arrays:
             seen_arrays.add(array_id)
             return state.size
-        logger.debug(f"Found duplicate array in {state.__class__.__name__} with id {array_id}")
+        logger.debug(
+            f"Found duplicate array in {state.__class__.__name__} with id {array_id}"
+        )
         return 0
 
     if isinstance(state, bool):

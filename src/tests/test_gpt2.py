@@ -28,7 +28,9 @@ from log_utils import logger
 torch.manual_seed(2)
 
 
-def get_types_and_shapes(data: Union[Tuple, ...], array_type: Union[Array, torch.Tensor]):
+def get_types_and_shapes(
+    data: Union[Tuple, ...], array_type: Union[Array, torch.Tensor]
+):
     if isinstance(data, tuple):
         types = tuple(type(d) for d in data)
         shapes = tuple(d.shape if isinstance(d, array_type) else None for d in data)
@@ -61,6 +63,7 @@ def jax_debug_hook(module, input, output):
     logger.debug(
         f"Called {module.__class__.__name__}: {input_shapes} -> {output_shapes}"
     )
+
 
 MODEL_NAME = "gpt2"
 BATCH_SIZE = 2
@@ -95,7 +98,9 @@ def test_load_gpt2(gpt2_config: GPT2Config):
     jax_state = to_jax_state(torch_model)
     jax_n_params = count_params(jax_state)
 
-    assert torch_n_params == jax_n_params, f"torch_n_params = {torch_n_params}, jax_n_params = {jax_n_params}"
+    assert (
+        torch_n_params == jax_n_params
+    ), f"torch_n_params = {torch_n_params}, jax_n_params = {jax_n_params}"
 
 
 # Redundant, already running in test_compare.py:204
@@ -231,7 +236,7 @@ def test_gpt2_base_model(gpt2_config: GPT2Config):
 
     input_ids = torch.randint(0, gpt2_config.vocab_size, (BATCH_SIZE, SEQ_LEN))
     jax_input_ids = jnp.array(input_ids, dtype=jnp.int64)
-   
+
     torch_gpt_base_model = TorchGPT2Model(gpt2_config).eval()
     torch_n_params = torch_count_params(torch_gpt_base_model)
 
@@ -241,7 +246,9 @@ def test_gpt2_base_model(gpt2_config: GPT2Config):
         torch_out = torch_gpt_base_model(input_ids)[0]
 
     # Jax
-    jax_gpt_base_model = GPT2BaseModel(vocab_size=gpt2_config.vocab_size, emb_size=gpt2_config.n_embd)
+    jax_gpt_base_model = GPT2BaseModel(
+        vocab_size=gpt2_config.vocab_size, emb_size=gpt2_config.n_embd
+    )
     jax_state = to_jax_state(torch_gpt_base_model)
     jax_n_params = count_params(jax_state)
 
@@ -271,22 +278,30 @@ def test_gpt2_forward(gpt2_config: GPT2Config, seq_len: int, use_pretrained: boo
 
     with torch.no_grad():
         torch_out = lm_head_model(input_ids).logits
-        
+
     # jax
     rng = jax.random.PRNGKey(0)
-    jax_lm_head_model = GPT2(vocab_size=gpt2_config.vocab_size, emb_size=gpt2_config.n_embd)
+    jax_lm_head_model = GPT2(
+        vocab_size=gpt2_config.vocab_size, emb_size=gpt2_config.n_embd
+    )
     jax_state = to_jax_state(lm_head_model)
     jax_lm_head_model.register_forward_hook(jax_debug_hook)
 
     jax_out = jax_lm_head_model(jax_state, jnp.array(input_ids), rng)
 
-    assert torch_out.shape == jax_out.shape, f"torch_out.shape = {torch_out.shape}, jax_out.shape = {jax_out.shape}"
-    assert jnp.allclose(jax_out, torch_out.numpy(), atol=1e-5), f"jax_out = {jax_out}, torch_out = {torch_out}"
+    assert (
+        torch_out.shape == jax_out.shape
+    ), f"torch_out.shape = {torch_out.shape}, jax_out.shape = {jax_out.shape}"
+    assert jnp.allclose(
+        jax_out, torch_out.numpy(), atol=1e-5
+    ), f"jax_out = {jax_out}, torch_out = {torch_out}"
 
 
 @pytest.mark.parametrize("max_new_tokens", [1, 2, 5])
 @pytest.mark.parametrize("use_pretrained", [True, False])
-def test_gpt2_generate(gpt2_config: GPT2Config, max_new_tokens: int, use_pretrained: bool):
+def test_gpt2_generate(
+    gpt2_config: GPT2Config, max_new_tokens: int, use_pretrained: bool
+):
     SEQ_LEN = 1
     # input_ids = torch.randint(0, gpt2_config.vocab_size, (1, SEQ_LEN))
     input_ids = torch.tensor([[1]])
@@ -309,40 +324,50 @@ def test_gpt2_generate(gpt2_config: GPT2Config, max_new_tokens: int, use_pretrai
             do_sample=False,
             use_cache=False,
             output_logits=True,
-            return_dict_in_generate=True
+            return_dict_in_generate=True,
         )
 
     torch_pred_token_ids = torch_out.sequences
     for token_logits in torch_out.logits:
-        logger.debug(f"Torch logits max: {token_logits.max()}, argmax: {token_logits.argmax()}")
+        logger.debug(
+            f"Torch logits max: {token_logits.max()}, argmax: {token_logits.argmax()}"
+        )
 
     # jax
     rng = jax.random.PRNGKey(0)
-    jax_lm_head_model = GPT2(vocab_size=gpt2_config.vocab_size, emb_size=gpt2_config.n_embd)
+    jax_lm_head_model = GPT2(
+        vocab_size=gpt2_config.vocab_size, emb_size=gpt2_config.n_embd
+    )
     jax_state = to_jax_state(lm_head_model)
-    
-    jax_pred_token_ids = jax_lm_head_model.generate(jax_state, jnp.array(input_ids), rng, max_new_tokens=max_new_tokens)
 
-    assert torch_pred_token_ids.shape == jax_pred_token_ids.shape, f"torch_pred_token_ids.shape = {torch_pred_token_ids.shape}, jax_pred_token_ids.shape = {jax_pred_token_ids.shape}"
-    assert jnp.allclose(jax_pred_token_ids, torch_pred_token_ids.numpy(), atol=1e-5), f"jax_pred_token_ids = {jax_pred_token_ids}, torch_pred_token_ids = {torch_pred_token_ids}"
+    jax_pred_token_ids = jax_lm_head_model.generate(
+        jax_state, jnp.array(input_ids), rng, max_new_tokens=max_new_tokens
+    )
+
+    assert (
+        torch_pred_token_ids.shape == jax_pred_token_ids.shape
+    ), f"torch_pred_token_ids.shape = {torch_pred_token_ids.shape}, jax_pred_token_ids.shape = {jax_pred_token_ids.shape}"
+    assert jnp.allclose(
+        jax_pred_token_ids, torch_pred_token_ids.numpy(), atol=1e-5
+    ), f"jax_pred_token_ids = {jax_pred_token_ids}, torch_pred_token_ids = {torch_pred_token_ids}"
 
 
 def test_gpt2_lm_head(gpt2_config: GPT2Config):
     input_ids = torch.tensor([[1]])
-    
+
     # PyTorch
     torch_model = GPT2LMHeadModel.from_pretrained(MODEL_NAME).eval()
     with torch.no_grad():
         torch_logits = torch_model(input_ids).logits
-    
+
     # JAX
     jax_model = GPT2(vocab_size=gpt2_config.vocab_size, emb_size=gpt2_config.n_embd)
     jax_state = to_jax_state(torch_model)
     jax_logits = jax_model(jax_state, jnp.array(input_ids), jax.random.PRNGKey(0))
-    
-    logger.debug(f"Torch logits max: {torch_logits.max()}, argmax: {torch_logits.argmax()}")
+
+    logger.debug(
+        f"Torch logits max: {torch_logits.max()}, argmax: {torch_logits.argmax()}"
+    )
     logger.debug(f"JAX logits max: {jax_logits.max()}, argmax: {jax_logits.argmax()}")
-    
+
     assert jnp.allclose(jax_logits, torch_logits.numpy(), atol=1e-5)
-
-

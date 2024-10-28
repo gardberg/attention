@@ -298,15 +298,19 @@ def to_jax_state(module: nn.Module) -> NamedTuple:
         return T5DenseState(
             wi=LinearState(
                 weights=jnp.array(module.wi.weight.detach()),
-                bias=jnp.array(module.wi.bias.detach())
-                if module.wi.bias is not None
-                else None,
+                bias=(
+                    jnp.array(module.wi.bias.detach())
+                    if module.wi.bias is not None
+                    else None
+                ),
             ),
             wo=LinearState(
                 weights=jnp.array(module.wo.weight.detach()),
-                bias=jnp.array(module.wo.bias.detach())
-                if module.wo.bias is not None
-                else None,
+                bias=(
+                    jnp.array(module.wo.bias.detach())
+                    if module.wo.bias is not None
+                    else None
+                ),
             ),
         )
     elif isinstance(module, T5LayerFF):
@@ -321,9 +325,11 @@ def to_jax_state(module: nn.Module) -> NamedTuple:
             key=to_jax_state(module.k),
             value=to_jax_state(module.v),
             output=to_jax_state(module.o),
-            pos_emb=to_jax_state(module.relative_attention_bias)
-            if hasattr(module, "relative_attention_bias")
-            else None,
+            pos_emb=(
+                to_jax_state(module.relative_attention_bias)
+                if hasattr(module, "relative_attention_bias")
+                else None
+            ),
         )
 
     elif isinstance(module, T5LayerSelfAttention):
@@ -423,9 +429,9 @@ def to_jax_state(module: nn.Module) -> NamedTuple:
         return GPT2State(
             transformer=transformer_state,
             lm_head=LinearState(
-                weights=transformer_state.wte.embeddings, # shared weights between lm_head and wte
+                weights=transformer_state.wte.embeddings,  # shared weights between lm_head and wte
                 bias=None,
-            )
+            ),
         )
 
     else:

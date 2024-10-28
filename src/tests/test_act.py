@@ -56,9 +56,9 @@ def test_softmax(shape: tuple[int, ...]):
 def test_softmax_matching():
     x = torch.randn(1, 50257)  # vocab size
     torch_probs = torch.nn.functional.softmax(x, dim=-1)
-    
+
     jax_probs = softmax(jnp.array(x), dim=-1)
-    
+
     assert jnp.allclose(jax_probs, torch_probs.numpy(), atol=1e-5)
 
 
