@@ -1,10 +1,20 @@
 # Attention
 
-From-scratch implementations of core transformer concepts in Jax Numpy.
+From-scratch implementations of core transformer concepts in Jax NumPy.
 
 For example - an [implementation](https://github.com/gardberg/attention/blob/main/src/t5.py#L19) of [Google's T5 model](https://arxiv.org/abs/1910.10683), all the way from a linear layer to autoregressive encoder-decoder text generation.
 
-See `examples/t5_generation.ipynb`
+Or [OpenAI's GPT2](https://github.com/gardberg/attention/blob/main/src/models/gpt2.py#L19) (which agrees on the difficulty of formatting CLI printing):
+
+<div style="text-align:center;">
+    <img src="images/gpt2_gen_example.gif" width="800"/>
+</div>
+
+---
+
+### T5 Translation example 
+
+(See `examples/t5_generation.ipynb`)
 
 ```python
 # Load pytorch model
@@ -24,9 +34,9 @@ pred_token_ids = jax_t5_model.generate(state, input_ids, rng, max_length=40)
 pred_text = tokenizer.decode(pred_token_ids[0], skip_special_tokens=True)
 
 print(pred_text)
+
 # >> Bonjour!
 ```
-
 
 ### Demonstrating attention quadratic time and memory scaling
 
@@ -43,7 +53,9 @@ See `examples/example_dense.ipynb`.
     <img src="images/decision_boundary.gif" width="470" height="330" />
 </div>
 
-### Setup
+---
+
+### Dev setup
 
 *Python version:* 3.11.6
 
@@ -96,6 +108,7 @@ Run formatting with `black .`
 
 - [x] Use torch hooks to debug tests
 - [x] Implement hooks for basemodel
+- [x] Switch to uv for package management
 
 #### Improvements
 
