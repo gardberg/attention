@@ -1,7 +1,7 @@
 from base import BaseModule, Array
 from conv import Conv1d
-from states import ConvLayerBlockState
-from typing import Optional, Tuple
+from states import ConvLayerBlockState, FeatureExtractorState
+from typing import Optional, Tuple, List
 from act import gelu
 import jax.numpy as jnp
 
@@ -67,5 +67,28 @@ class ConvLayerBlock(BaseModule):
             length = jnp.maximum(
                 length, jnp.zeros_like(length)
             )  # make sure we dont get negative lengths
+
+        return x, length
+
+
+class FeatureExtractor(BaseModule):
+    def __init__(self, conv_layers: List[ConvLayerBlock]):
+        super().__init__()
+        self.conv_layers = conv_layers
+
+    def forward(
+        self,
+        state: FeatureExtractorState,
+        x: Array["batch_size, time"],
+        length: Optional[Array["batch_size,"]] = None,
+    ) -> Tuple[Array["batch_size, n_frames, n_features"], Optional[Array["batch_size,"]]]:
+
+        # (batch_size, in_channels=1, time)
+        x = x.reshape(x.shape[0], 1, -1)
+
+        for i, layer in enumerate(self.conv_layers):
+            x, length = layer(state.conv_layers[i], x, length)
+
+        x = x.transpose(0, 2, 1)
 
         return x, length

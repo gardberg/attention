@@ -23,6 +23,8 @@ from transformers.pytorch_utils import Conv1D  # gpt2 conv
 
 from torch.nn.modules.conv import Conv1d as TorchConv1d
 from torchaudio.models.wav2vec2.components import ConvLayerBlock as TorchConvLayerBlock
+from torchaudio.models.wav2vec2.components import FeatureExtractor as TorchFeatureExtractor
+
 from base import Array
 
 from torch import nn
@@ -228,6 +230,10 @@ class GPT2State(NamedTuple):
 class ConvLayerBlockState(NamedTuple):
     conv: Conv1dState
     layer_norm: Union[None, LayerNormState]
+
+
+class FeatureExtractorState(NamedTuple):
+    conv_layers: list[ConvLayerBlockState]
 
 
 def to_jax_state(module: nn.Module) -> NamedTuple:
@@ -475,6 +481,11 @@ def to_jax_state(module: nn.Module) -> NamedTuple:
                 if module.layer_norm is not None
                 else None
             ),
+        )
+
+    elif isinstance(module, TorchFeatureExtractor):
+        return FeatureExtractorState(
+            conv_layers=[to_jax_state(layer) for layer in module.conv_layers]
         )
 
     else:
