@@ -8,12 +8,13 @@ from states import (
     GPT2BaseModelState,
     GPT2State,
 )
-from act import gelu_new, dropout, softmax_stable
+from act import gelu, dropout, softmax_stable
 from log_utils import logger
 
 import jax.numpy as jnp
 import jax
 from typing import Optional
+
 
 # GPT2Model with LM head
 class GPT2(BaseModule):
@@ -45,7 +46,9 @@ class GPT2(BaseModule):
 
         pred_token_ids = self.prepare_inputs(input_ids)
 
-        for next_token_id in self.generate_tokens(state, rng, input_ids, max_new_tokens):
+        for next_token_id in self.generate_tokens(
+            state, rng, input_ids, max_new_tokens
+        ):
             pred_token_ids = jnp.concatenate(
                 [pred_token_ids, next_token_id.reshape(1, 1)], axis=1
             )
@@ -66,7 +69,9 @@ class GPT2(BaseModule):
         while (nbr_new_tokens < max_new_tokens) and (
             pred_token_ids.shape[-1] < self.transformer.context_len
         ):
-            probs = self.calc_token_probs(state, pred_token_ids, rng, only_last_token=True)
+            probs = self.calc_token_probs(
+                state, pred_token_ids, rng, only_last_token=True
+            )
             next_token_id = self.predict_next_token(probs)
 
             pred_token_ids = jnp.concatenate(
@@ -80,13 +85,19 @@ class GPT2(BaseModule):
                 break
 
     def calc_token_probs(
-        self, state: GPT2State, pred_token_ids: Array["1, seq_len"], rng: Array, only_last_token: bool = False
+        self,
+        state: GPT2State,
+        pred_token_ids: Array["1, seq_len"],
+        rng: Array,
+        only_last_token: bool = False,
     ) -> Array["1, vocab_size"]:
         logits: Array["1, seq_len, vocab_size"] = self.forward(
             state, pred_token_ids, rng
         )
-        if only_last_token: return softmax_stable(logits[:, -1, :], dim=-1)
-        else: return softmax_stable(logits, dim=-1).squeeze(0)
+        if only_last_token:
+            return softmax_stable(logits[:, -1, :], dim=-1)
+        else:
+            return softmax_stable(logits, dim=-1).squeeze(0)
 
     def prepare_inputs(
         self, input_ids: Optional[Array["context_len,"]] = None
@@ -165,7 +176,7 @@ class GPT2BaseModel(BaseModule):
         )
 
 
-# activation: gelu_new
+# activation: gelu
 # attention: GPT2Attention
 class GPT2Block(BaseModule):
     def __init__(self, emb_size: int = 768):
@@ -314,7 +325,7 @@ class GPT2Dense(BaseModule):
     ) -> Array["..., emb_size"]:
         # out.shape: (..., emb_size)
         x = self.c_fc(state.c_fc, x)
-        x = gelu_new(x)
+        x = gelu(x, approximate="tanh")
         x = self.c_proj(state.c_proj, x)
         if training:
             x = dropout(x, 0.1, rng)

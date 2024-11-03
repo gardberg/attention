@@ -1,4 +1,4 @@
-from typing import NamedTuple, Type
+from typing import NamedTuple, Type, Optional, Union
 import jax
 import jax.numpy as jnp
 from transformers.models.t5.modeling_t5 import (
@@ -19,7 +19,10 @@ from transformers.models.gpt2.modeling_gpt2 import (
     GPT2Model,
     GPT2LMHeadModel,
 )
-from transformers.pytorch_utils import Conv1D
+from transformers.pytorch_utils import Conv1D  # gpt2 conv
+
+from torch.nn.modules.conv import Conv1d as TorchConv1d
+from torchaudio.models.wav2vec2.components import ConvLayerBlock as TorchConvLayerBlock
 from base import Array
 
 from torch import nn
@@ -39,6 +42,16 @@ def from_pretrained(hf_model: str) -> NamedTuple:
         return state
 
     raise ValueError(f"Unexpected model {hf_model}")
+
+
+class Conv1dState(NamedTuple):
+    weight: Array
+    bias: Array
+
+
+class GroupNormState(NamedTuple):
+    weight: Array
+    bias: Array
 
 
 # Contains 3 more than torch
@@ -209,6 +222,12 @@ class GPT2BaseModelState(NamedTuple):
 class GPT2State(NamedTuple):
     transformer: GPT2BaseModelState
     lm_head: LinearState
+
+
+# Wav2Vec2
+class ConvLayerBlockState(NamedTuple):
+    conv: Conv1dState
+    layer_norm: Union[None, LayerNormState]
 
 
 def to_jax_state(module: nn.Module) -> NamedTuple:
@@ -431,6 +450,30 @@ def to_jax_state(module: nn.Module) -> NamedTuple:
             lm_head=LinearState(
                 weights=transformer_state.wte.embeddings,  # shared weights between lm_head and wte
                 bias=None,
+            ),
+        )
+
+    elif isinstance(module, nn.GroupNorm):
+        return GroupNormState(
+            weight=(
+                jnp.array(module.weight.detach()) if module.weight is not None else None
+            ),
+            bias=jnp.array(module.bias.detach()) if module.bias is not None else None,
+        )
+
+    elif isinstance(module, TorchConv1d):
+        return Conv1dState(
+            weight=jnp.array(module.weight.detach()),
+            bias=jnp.array(module.bias.detach()) if module.bias is not None else None,
+        )
+
+    elif isinstance(module, TorchConvLayerBlock):
+        return ConvLayerBlockState(
+            conv=to_jax_state(module.conv),
+            layer_norm=(
+                to_jax_state(module.layer_norm)
+                if module.layer_norm is not None
+                else None
             ),
         )
 

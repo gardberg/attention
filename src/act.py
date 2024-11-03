@@ -2,6 +2,7 @@ import jax.numpy as jnp
 import jax
 from states import SnakeState
 from base import BaseModule, Array
+from jax.scipy.special import erf
 
 
 # Naive
@@ -36,8 +37,23 @@ def swish(x: Array, beta: float = 1) -> Array:
     return x * sigmoid(beta * x)
 
 
-def gelu(x: Array) -> Array:
-    return x * sigmoid(1.702 * x)
+# tanh: GPT2 GELU, https://arxiv.org/abs/1606.08415
+def gelu(x: Array, approximate: str = "none") -> Array:
+    if approximate == "none":
+        return 0.5 * x * (1 + erf(x / jnp.sqrt(2)))
+    elif approximate == "sigmoid":
+        return x * sigmoid(1.702 * x)
+    elif approximate == "tanh":
+        return (
+            0.5
+            * x
+            * (
+                1.0
+                + jnp.tanh(jnp.sqrt(2.0 / jnp.pi) * (x + 0.044715 * jnp.power(x, 3.0)))
+            )
+        )
+    else:
+        raise ValueError(f"Unknown approximation method: {approximate}")
 
 
 # componentwise prod of sigmoid(L1) and L2. L1, L2 indep. affine transforms of x
@@ -51,15 +67,6 @@ def glu(x: Array, dim=-1) -> Array:
     mid = x.shape[dim] // 2
     x1, x2 = jnp.split(x, [mid], axis=dim)
     return x1 * sigmoid(x2)
-
-
-# GPT2 GELU: https://arxiv.org/abs/1606.08415
-def gelu_new(x: Array) -> Array:
-    return (
-        0.5
-        * x
-        * (1.0 + jnp.tanh(jnp.sqrt(2.0 / jnp.pi) * (x + 0.044715 * jnp.power(x, 3.0))))
-    )
 
 
 def swiglu(x: Array, dim=-1) -> Array:

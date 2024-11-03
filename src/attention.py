@@ -10,6 +10,59 @@ from functools import lru_cache
 from base import BaseModule, Array
 
 
+class GroupNorm(BaseModule):
+    def __init__(
+        self, num_groups: int, num_channels: int, eps: float = 1e-5, affine: bool = True
+    ):
+        super().__init__()
+
+        assert (
+            num_channels % num_groups == 0
+        ), "num_channels must be divisible by num_groups"
+
+        self.num_groups = num_groups
+        self.num_channels = num_channels
+        self.eps = eps
+        self.affine = affine
+
+    def forward(
+        self, state: GroupNormState, x: Array["batch_size, num_channels, ..."]
+    ) -> Array["batch_size, num_channels, ..."]:
+        channels_per_group = self.num_channels // self.num_groups
+        original_shape = x.shape
+
+        # Reshape to (batch_size, num_groups, channels_per_group, ...)
+        new_shape = x.shape[:1] + (self.num_groups, channels_per_group) + x.shape[2:]
+        x = x.reshape(new_shape)
+
+        axes = tuple(range(2, x.ndim))  # all dims except batch and group dims
+        mean = jnp.mean(x, axis=axes, keepdims=True)
+        var = jnp.var(x, axis=axes, keepdims=True)
+        x_norm = (x - mean) / jnp.sqrt(var + self.eps)
+
+        if self.affine:
+            # First reshape weight/bias to match grouped format
+            weight = state.weight.reshape(
+                1, self.num_groups, channels_per_group, *([1] * (x.ndim - 3))
+            )
+            bias = state.bias.reshape(
+                1, self.num_groups, channels_per_group, *([1] * (x.ndim - 3))
+            )
+
+            output = weight * x_norm + bias
+        else:
+            output = x_norm
+
+        output = output.reshape(original_shape)
+        return output
+
+    def init_state(self, rng: Array) -> GroupNormState:
+        return GroupNormState(
+            weight=jnp.ones(self.num_channels),
+            bias=jnp.zeros(self.num_channels),
+        )
+
+
 class BatchNorm1d(BaseModule):
     def __init__(self, dims: int):
         super().__init__()

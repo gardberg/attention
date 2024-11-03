@@ -16,6 +16,33 @@ rng = jax.random.PRNGKey(0)
 torch.manual_seed(1337)
 
 
+@pytest.mark.parametrize(
+    "affine, num_groups, num_channels",
+    [(False, 2, 4), (True, 2, 4), (False, 4, 4), (True, 512, 512)],
+)
+def test_groupnorm(affine, num_groups, num_channels):
+    B, N, H = 2, num_channels, 2
+    x = torch.randn(B, N, H)
+    torch_gn = torch.nn.GroupNorm(num_groups, num_channels, affine=affine)
+    with torch.no_grad():
+        y_torch = torch_gn(x)
+
+    y_torch = jnp.array(y_torch)
+
+    jax_gn = GroupNorm(num_groups, num_channels, affine=affine)
+    state = to_jax_state(torch_gn)
+    x_jax = jnp.array(x)
+    y_jax = jax_gn(state, x_jax)
+
+    print(f"Diff: {np.linalg.norm(y_torch - y_jax):.2e}")
+    assert (
+        y_torch.shape == y_jax.shape
+    ), f"y_torch.shape = {y_torch.shape}, y_jax.shape = {y_jax.shape}"
+    assert jnp.allclose(
+        y_torch, y_jax, atol=TOL
+    ), f"y_torch = {y_torch}, y_jax = {y_jax}"
+
+
 # Compare pytorch linear network to custom implementation
 @pytest.mark.parametrize("n_in, n_out", [(1, 1), (4, 1), (1, 4), (4, 4)])
 # run with pytest -m paramtest

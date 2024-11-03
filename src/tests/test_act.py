@@ -8,41 +8,6 @@ from log_utils import logger
 from loss import MSELoss
 
 
-@pytest.mark.parametrize("p", [0.1, 0.5, 0.0, 0.8])
-def test_dropout_train(p: float):
-    x = torch.ones(4, 2, 3, requires_grad=False)
-
-    # Torch
-    with torch.no_grad():
-        y_torch = torch.nn.functional.dropout(x, p=p, training=True).numpy()
-
-    # Jax
-    rng = jax.random.PRNGKey(0)
-    y_jax = dropout(jnp.array(x), p, rng, training=True)
-
-    assert y_torch.shape == y_jax.shape, f"Got {y_jax.shape}, expected {y_torch.shape}"
-    # assert y_jax is not all ones
-    if p == 0.0:
-        assert np.allclose(y_jax, x), f"y_torch = {y_torch}, y = {y_jax}"
-    else:
-        assert not np.allclose(y_jax, x), f"y_torch = {y_torch}, y = {y_jax}"
-
-
-@pytest.mark.parametrize("p", [0.1, 0.5, 0.0, 0.8])
-def test_dropout_eval(p: float):
-    x = torch.ones(4, 2, 3, requires_grad=False)
-
-    # Torch
-    with torch.no_grad():
-        y_torch = torch.nn.functional.dropout(x, p=p, training=False).numpy()
-
-    # Jax
-    rng = jax.random.PRNGKey(0)
-    y_jax = dropout(jnp.array(x), p, rng, training=False)
-
-    assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
-
-
 @pytest.mark.parametrize("shape", [(4, 4), (4, 4, 4)])
 def test_softmax(shape: tuple[int, ...]):
     x = torch.randn(shape)
@@ -108,6 +73,26 @@ def test_swiglu(shape: tuple[int, ...], dim: int):
     assert np.allclose(y, y_torch, atol=TOL), f"y = {y}, y_torch = {y_torch}"
 
 
+@pytest.mark.parametrize("shape, approximate", [((4, 4), "none"), ((4, 4), "tanh")])
+def test_gelu(shape, approximate):
+    x = torch.randn(shape)
+    y_torch = torch.nn.functional.gelu(x, approximate=approximate).numpy()
+    y = gelu(jnp.array(x), approximate=approximate)
+
+    print(f"Diff: {np.linalg.norm(y_torch - y):.2e}")
+    assert np.allclose(y, y_torch, atol=TOL), f"y = {y}, y_torch = {y_torch}"
+
+
+def test_gelu_sigmoid():
+    TOL = 5e-2  # Higher tolerance for sigmoid approximation
+    x = torch.randn(4, 4)
+    y_torch = torch.nn.functional.gelu(x, approximate="none").numpy()
+    y = gelu(jnp.array(x), approximate="sigmoid")
+
+    print(f"Diff: {np.linalg.norm(y_torch - y):.2e}")
+    assert np.allclose(y, y_torch, atol=TOL), f"y = {y}, y_torch = {y_torch}"
+
+
 @pytest.mark.parametrize("n_in, shape", [(1, 1), (2, 2), (4, 4)])
 def test_snake(n_in: int, shape: tuple[int, ...]):
     a = 2
@@ -156,3 +141,38 @@ def test_snake_trainable(n_in: int, shape: tuple[int, ...]):
     assert np.allclose(
         grads[0], grads_pytorch, atol=TOL
     ), f"grads = {grads[0]}, grads_pytorch = {grads_pytorch}"
+
+
+@pytest.mark.parametrize("p", [0.1, 0.5, 0.0, 0.8])
+def test_dropout_train(p: float):
+    x = torch.ones(4, 2, 3, requires_grad=False)
+
+    # Torch
+    with torch.no_grad():
+        y_torch = torch.nn.functional.dropout(x, p=p, training=True).numpy()
+
+    # Jax
+    rng = jax.random.PRNGKey(0)
+    y_jax = dropout(jnp.array(x), p, rng, training=True)
+
+    assert y_torch.shape == y_jax.shape, f"Got {y_jax.shape}, expected {y_torch.shape}"
+    # assert y_jax is not all ones
+    if p == 0.0:
+        assert np.allclose(y_jax, x), f"y_torch = {y_torch}, y = {y_jax}"
+    else:
+        assert not np.allclose(y_jax, x), f"y_torch = {y_torch}, y = {y_jax}"
+
+
+@pytest.mark.parametrize("p", [0.1, 0.5, 0.0, 0.8])
+def test_dropout_eval(p: float):
+    x = torch.ones(4, 2, 3, requires_grad=False)
+
+    # Torch
+    with torch.no_grad():
+        y_torch = torch.nn.functional.dropout(x, p=p, training=False).numpy()
+
+    # Jax
+    rng = jax.random.PRNGKey(0)
+    y_jax = dropout(jnp.array(x), p, rng, training=False)
+
+    assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
