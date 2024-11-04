@@ -1,15 +1,15 @@
-from models.wav2vec2 import ConvLayerBlock, FeatureExtractor
+from models.wav2vec2 import ConvLayerBlock, FeatureExtractor, FeatureProjection
 from states import to_jax_state
 from attention import GroupNorm
 
 from torchaudio.models.wav2vec2.components import ConvLayerBlock as TorchConvLayerBlock
-from torchaudio.models.wav2vec2.components import FeatureExtractor as TorchFeatureExtractor
 from torchaudio.models.wav2vec2.model import Wav2Vec2Model
 from torch.nn import GroupNorm as TorchGroupNorm
 import torchaudio
 import pytest
 from pytest import fixture
 import torch
+import jax
 import jax.numpy as jnp
 
 BATCH_SIZE = 2
@@ -106,3 +106,23 @@ def test_wav2vec2_feature_extractor(wav2vec2_model: Wav2Vec2Model):
 
     assert jnp.allclose(y_torch, y_jax, atol=TOL), f"Torch: {y_torch}, Jax: {y_jax}"
     assert jnp.allclose(length_torch, length_jax, atol=TOL), f"Torch: {length_torch}, Jax: {length_jax}"
+
+
+def test_wav2vec2_feature_projection(wav2vec2_model: Wav2Vec2Model):
+    rng = jax.random.PRNGKey(0)
+    x = torch.randn(BATCH_SIZE, 512)
+
+    torch_feature_projection = wav2vec2_model.encoder.feature_projection
+    jax_state = to_jax_state(torch_feature_projection)
+
+    with torch.no_grad():
+        y_torch = torch_feature_projection(x)
+
+    y_torch = jnp.array(y_torch)
+
+    jax_feature_projection = FeatureProjection(512, 768)
+    y_jax = jax_feature_projection.forward(jax_state, jnp.array(x), jnp.array(rng), training=False)
+
+    assert y_torch.shape == y_jax.shape, f"Torch: {y_torch.shape}, Jax: {y_jax.shape}"
+    print(f"Diff: {jnp.linalg.norm(y_torch - y_jax):.2e}")
+    assert jnp.allclose(y_torch, y_jax, atol=TOL), f"Torch: {y_torch}, Jax: {y_jax}"

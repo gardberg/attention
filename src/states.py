@@ -24,6 +24,7 @@ from transformers.pytorch_utils import Conv1D  # gpt2 conv
 from torch.nn.modules.conv import Conv1d as TorchConv1d
 from torchaudio.models.wav2vec2.components import ConvLayerBlock as TorchConvLayerBlock
 from torchaudio.models.wav2vec2.components import FeatureExtractor as TorchFeatureExtractor
+from torchaudio.models.wav2vec2.components import FeatureProjection as TorchFeatureProjection
 
 from base import Array
 
@@ -234,6 +235,12 @@ class ConvLayerBlockState(NamedTuple):
 
 class FeatureExtractorState(NamedTuple):
     conv_layers: list[ConvLayerBlockState]
+
+
+class FeatureProjectionState(NamedTuple):
+    layer_norm: LayerNormState
+    projection: LinearState
+
 
 
 def to_jax_state(module: nn.Module) -> NamedTuple:
@@ -486,6 +493,12 @@ def to_jax_state(module: nn.Module) -> NamedTuple:
     elif isinstance(module, TorchFeatureExtractor):
         return FeatureExtractorState(
             conv_layers=[to_jax_state(layer) for layer in module.conv_layers]
+        )
+
+    elif isinstance(module, TorchFeatureProjection):
+        return FeatureProjectionState(
+            layer_norm=to_jax_state(module.layer_norm),
+            projection=to_jax_state(module.projection),
         )
 
     else:

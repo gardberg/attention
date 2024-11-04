@@ -1,10 +1,11 @@
 from base import BaseModule, Array
 from conv import Conv1d
-from states import ConvLayerBlockState, FeatureExtractorState
-from typing import Optional, Tuple, List
-from act import gelu
-import jax.numpy as jnp
+from states import ConvLayerBlockState, FeatureExtractorState, FeatureProjectionState
+from act import gelu, dropout
+from attention import LayerNorm, Linear
 
+from typing import Optional, Tuple, List
+import jax.numpy as jnp
 
 class Wav2Vec2(BaseModule):
     def __init__(self):
@@ -92,3 +93,28 @@ class FeatureExtractor(BaseModule):
         x = x.transpose(0, 2, 1)
 
         return x, length
+
+
+class Encoder(BaseModule):
+    def __init__(self):
+        super().__init__()
+
+
+class FeatureProjection(BaseModule):
+    def __init__(self, in_features: int, out_features: int):
+        super().__init__()
+
+        self.layer_norm = LayerNorm(in_features)
+        self.projection = Linear(in_features, out_features, bias=True)
+
+    def forward(
+        self,
+        state: FeatureProjectionState,
+        x: Array["batch_size, frames, in_features"],
+        rng: Array,
+        training: bool = False,
+    ) -> Array["batch_size, frames, out_features"]:
+        x = self.layer_norm(state.layer_norm, x)
+        x = self.projection(state.projection, x)
+        x = dropout(x, 0.1, rng, training)
+        return x
