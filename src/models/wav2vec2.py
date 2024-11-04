@@ -3,6 +3,7 @@ from conv import Conv1d
 from states import ConvLayerBlockState, FeatureExtractorState, FeatureProjectionState
 from act import gelu, dropout
 from attention import LayerNorm, Linear
+from transformer import Transformer
 
 from typing import Optional, Tuple, List
 import jax.numpy as jnp
@@ -96,8 +97,11 @@ class FeatureExtractor(BaseModule):
 
 
 class Encoder(BaseModule):
-    def __init__(self):
+    def __init__(self, in_features: int, out_features: int):
         super().__init__()
+
+        self.feature_projection = FeatureProjection(in_features, out_features)
+        self.transformer = Transformer()
 
 
 class FeatureProjection(BaseModule):

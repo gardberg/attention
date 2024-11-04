@@ -126,3 +126,7 @@ def test_wav2vec2_feature_projection(wav2vec2_model: Wav2Vec2Model):
     assert y_torch.shape == y_jax.shape, f"Torch: {y_torch.shape}, Jax: {y_jax.shape}"
     print(f"Diff: {jnp.linalg.norm(y_torch - y_jax):.2e}")
     assert jnp.allclose(y_torch, y_jax, atol=TOL), f"Torch: {y_torch}, Jax: {y_jax}"
+
+
+def test_wav2vec2_transformer(wav2vec2_model: Wav2Vec2Model):
+    pass
