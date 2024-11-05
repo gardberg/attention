@@ -1,4 +1,4 @@
-from models.wav2vec2 import ConvLayerBlock, FeatureExtractor, FeatureProjection
+from models.wav2vec2 import ConvLayerBlock, FeatureExtractor, FeatureProjection, ConvPosEmbedding
 from states import to_jax_state
 from attention import GroupNorm
 
@@ -122,6 +122,28 @@ def test_wav2vec2_feature_projection(wav2vec2_model: Wav2Vec2Model):
 
     jax_feature_projection = FeatureProjection(512, 768)
     y_jax = jax_feature_projection.forward(jax_state, jnp.array(x), jnp.array(rng), training=False)
+
+    assert y_torch.shape == y_jax.shape, f"Torch: {y_torch.shape}, Jax: {y_jax.shape}"
+    print(f"Diff: {jnp.linalg.norm(y_torch - y_jax):.2e}")
+    assert jnp.allclose(y_torch, y_jax, atol=TOL), f"Torch: {y_torch}, Jax: {y_jax}"
+
+
+def test_wav2vec2_conv_pos_embedding(wav2vec2_model: Wav2Vec2Model):
+    # input: (batch_size, n_frames, n_features)
+    N_FRAMES = 10
+    N_FEATURES = 768
+    x = torch.randn(BATCH_SIZE, N_FRAMES, N_FEATURES)
+
+    torch_conv_pos_embedding = wav2vec2_model.encoder.transformer.pos_conv_embed
+    jax_state = to_jax_state(torch_conv_pos_embedding)
+
+    with torch.no_grad():
+        y_torch = torch_conv_pos_embedding(x)
+
+    y_torch = jnp.array(y_torch)
+
+    jax_conv_pos_embedding = ConvPosEmbedding(embed_dim=N_FEATURES, kernel_size=128, groups=16)
+    y_jax = jax_conv_pos_embedding.forward(jax_state, jnp.array(x))
 
     assert y_torch.shape == y_jax.shape, f"Torch: {y_torch.shape}, Jax: {y_jax.shape}"
     print(f"Diff: {jnp.linalg.norm(y_torch - y_jax):.2e}")

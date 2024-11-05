@@ -1,6 +1,6 @@
 from base import BaseModule, Array
 from conv import Conv1d
-from states import ConvLayerBlockState, FeatureExtractorState, FeatureProjectionState
+from states import ConvLayerBlockState, FeatureExtractorState, FeatureProjectionState, ConvPosEmbeddingState
 from act import gelu, dropout
 from attention import LayerNorm, Linear
 from transformer import Transformer
@@ -31,6 +31,40 @@ class Wav2Vec2(BaseModule):
 
         # -> Logits
 
+        
+class ConvPosEmbedding(BaseModule):
+
+    def __init__(self, embed_dim: int, kernel_size: int, groups: int):
+        super().__init__()
+
+        self.embed_dim = embed_dim
+        self.kernel_size = kernel_size
+
+        # no weight normalization during inference
+        self.conv = Conv1d(
+            in_channels=embed_dim,
+            out_channels=embed_dim,
+            kernel_size=kernel_size,
+            padding=kernel_size // 2,
+            groups=groups,
+        )
+
+        # used to remove the last feature if kernel_size is even
+        self.num_remove = 1 if kernel_size % 2 == 0 else 0
+
+    def forward(
+        self,
+        state: ConvPosEmbeddingState,
+        x: Array["batch_size, n_frames, n_features"],
+    ) -> Array["batch_size, n_frames, n_features"]:
+        x = x.transpose(0, 2, 1)
+        x = self.conv(state.conv, x)
+        if self.num_remove > 0:
+            x = x[..., : -self.num_remove]
+        x = gelu(x)
+        x = x.transpose(0, 2, 1)
+        return x
+
 
 class ConvLayerBlock(BaseModule):
     def __init__(
@@ -52,7 +86,7 @@ class ConvLayerBlock(BaseModule):
     def forward(
         self,
         state: ConvLayerBlockState,
-        x: Array["batch_size, in_channels, in_length"],
+        x: Array["batch_size, in_channels, in_length"],  # in_length: in_frame
         length: Optional[Array["batch_size,"]] = None,  # length of each sequence
     ) -> Tuple[
         Array["batch_size, out_channels, out_length"], Optional[Array["batch_size,"]]
@@ -114,10 +148,10 @@ class FeatureProjection(BaseModule):
     def forward(
         self,
         state: FeatureProjectionState,
-        x: Array["batch_size, frames, in_features"],
+        x: Array["batch_size, n_frames, in_features"],
         rng: Array,
         training: bool = False,
-    ) -> Array["batch_size, frames, out_features"]:
+    ) -> Array["batch_size, n_frames, out_features"]:
         x = self.layer_norm(state.layer_norm, x)
         x = self.projection(state.projection, x)
         x = dropout(x, 0.1, rng, training)

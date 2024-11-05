@@ -25,6 +25,7 @@ from torch.nn.modules.conv import Conv1d as TorchConv1d
 from torchaudio.models.wav2vec2.components import ConvLayerBlock as TorchConvLayerBlock
 from torchaudio.models.wav2vec2.components import FeatureExtractor as TorchFeatureExtractor
 from torchaudio.models.wav2vec2.components import FeatureProjection as TorchFeatureProjection
+from torchaudio.models.wav2vec2.components import ConvolutionalPositionalEmbedding as TorchConvPosEmbedding
 
 from base import Array
 
@@ -241,6 +242,9 @@ class FeatureProjectionState(NamedTuple):
     layer_norm: LayerNormState
     projection: LinearState
 
+
+class ConvPosEmbeddingState(NamedTuple):
+    conv: Conv1dState
 
 
 def to_jax_state(module: nn.Module) -> NamedTuple:
@@ -499,6 +503,11 @@ def to_jax_state(module: nn.Module) -> NamedTuple:
         return FeatureProjectionState(
             layer_norm=to_jax_state(module.layer_norm),
             projection=to_jax_state(module.projection),
+        )
+
+    elif isinstance(module, TorchConvPosEmbedding):
+        return ConvPosEmbeddingState(
+            conv=to_jax_state(module.conv),
         )
 
     else:
