@@ -9,14 +9,24 @@ class EncoderLayer(BaseModule):
     """
 
     def __init__(
-        self, emb_size: int, n_heads: int, d_ff: int = 2048, dropout: float = 0.0
+        self,
+        emb_size: int,
+        n_heads: int,
+        d_ff: int = 2048,
+        dropout: float = 0.0,
+        layer_norm_first: bool = True,
+        ff_activation: Callable = relu,
+        attn_out_bias: bool = False,
+        attn_qk_bias: bool = False,
     ):
         super().__init__()
         self.emb_size = emb_size
+        self.layer_norm_first = layer_norm_first
+
         self.norm_attn = LayerNorm(emb_size)
-        self.self_attn = MultiHeadAttention(emb_size, n_heads)
+        self.self_attn = MultiHeadAttention(emb_size, n_heads, out_bias=attn_out_bias, qk_bias=attn_qk_bias)
         self.norm_ff = LayerNorm(emb_size)
-        self.feed_forward = FeedForward(emb_size, d_ff)
+        self.feed_forward = FeedForward(emb_size, d_ff, ff_activation, dropout)
         self.dropout = dropout
 
     def forward(
@@ -25,7 +35,7 @@ class EncoderLayer(BaseModule):
         src: Array,
         rng: Array,
         src_mask: Array = None,
-        training: bool = True,
+        training: bool = False,
     ) -> Array:
         """
         state:      NamedTuple of parameters
@@ -36,16 +46,24 @@ class EncoderLayer(BaseModule):
         """
         rng1, rng2, rng3 = jax.random.split(rng, 3)
 
-        z = self.norm_attn(state.layer_norm1, src)
-        attn = self.self_attn(state.self_attn, z, z, z, src_mask)
-        src_drop = dropout(attn, self.dropout, rng1, training)
-        src += src_drop
+        residual = src
 
-        z = self.norm_ff(state.layer_norm2, src)
-        ff = self.feed_forward(state.feed_forward, z, rng2)
-        src_drop = dropout(ff, self.dropout, rng3, training)
-        src += src_drop
-        return src
+        if self.layer_norm_first:
+            src = self.norm_attn(state.layer_norm1, src)
+
+        x = self.self_attn(state.self_attn, src, src, src, src_mask)
+        x = dropout(x, self.dropout, rng1, training)
+        x += residual
+
+        if self.layer_norm_first:
+            x_norm = self.norm_ff(state.layer_norm2, x)
+            x = x + self.feed_forward(state.feed_forward, x_norm, rng2, training)
+        else:
+            x = self.norm_attn(state.layer_norm1, x)
+            x = x + self.feed_forward(state.feed_forward, x, rng2, training)
+            x = self.norm_ff(state.layer_norm2, x)
+
+        return x
 
     def init_state(self, rng: Array) -> EncoderLayerState:
         rngs = jax.random.split(rng, 4)

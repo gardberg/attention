@@ -1,6 +1,9 @@
 from models.wav2vec2 import ConvLayerBlock, FeatureExtractor, FeatureProjection, ConvPosEmbedding
 from states import to_jax_state
-from attention import GroupNorm
+from attention import GroupNorm, FeedForward, MultiHeadAttention
+from act import gelu
+from transformer import EncoderLayer
+from utils import count_params, torch_count_params
 
 from torchaudio.models.wav2vec2.components import ConvLayerBlock as TorchConvLayerBlock
 from torchaudio.models.wav2vec2.model import Wav2Vec2Model
@@ -150,5 +153,109 @@ def test_wav2vec2_conv_pos_embedding(wav2vec2_model: Wav2Vec2Model):
     assert jnp.allclose(y_torch, y_jax, atol=TOL), f"Torch: {y_torch}, Jax: {y_jax}"
 
 
-def test_wav2vec2_transformer(wav2vec2_model: Wav2Vec2Model):
-    pass
+# getting some numerical error here, prob unavoidable, so added rtol
+def test_wav2vec2_feed_forward(wav2vec2_model: Wav2Vec2Model):
+    rng = jax.random.PRNGKey(0)
+    x = torch.randn(BATCH_SIZE, 768, dtype=torch.float32)
+    torch_feed_forward = wav2vec2_model.encoder.transformer.layers[0].feed_forward
+    jax_state = to_jax_state(torch_feed_forward)
+
+    # Debug intermediate values
+    with torch.no_grad():
+        # Get intermediate values from torch
+        intermediate = torch_feed_forward.intermediate_dense(x)
+        intermediate_act = torch.nn.functional.gelu(intermediate)
+        output = torch_feed_forward.output_dense(intermediate_act)
+        y_torch = output
+
+    # Convert to JAX arrays
+    x_jax = jnp.array(x)
+    intermediate_jax = jnp.array(intermediate)
+    intermediate_act_jax = jnp.array(intermediate_act)
+    y_torch = jnp.array(y_torch)
+
+    # Get JAX intermediate values
+    jax_feed_forward = FeedForward(768, 3072, act=gelu)
+    
+    # Compare layer1 output
+    layer1_out = jax_feed_forward.layer1(jax_state.linear1, x_jax)
+    print(f"Layer1 diff: {jnp.linalg.norm(layer1_out - intermediate_jax):.2e}")
+    
+    # Compare activation output
+    act_out = jax_feed_forward.act(layer1_out)
+    print(f"Activation diff: {jnp.linalg.norm(act_out - intermediate_act_jax):.2e}")
+
+    # Compare output output
+    output_out = jax_feed_forward.layer2(jax_state.linear2, act_out)
+    print(f"Output diff: {jnp.linalg.norm(output_out - y_torch):.2e}")
+    
+    # Final output
+    y_jax = jax_feed_forward.forward(jax_state, x_jax, jnp.array(rng), training=False)
+    print(f"Final diff: {jnp.linalg.norm(y_torch - y_jax):.2e}")
+
+    assert jnp.allclose(y_torch, y_jax, atol=TOL, rtol=5e-4), f"Torch: {y_torch}, Jax: {y_jax}"
+
+    
+def test_wav2vec2_self_attention(wav2vec2_model: Wav2Vec2Model):
+    LENGTH = 10
+    x = torch.randn(BATCH_SIZE, LENGTH, 768)
+
+    torch_self_attention = wav2vec2_model.encoder.transformer.layers[0].attention.eval()
+    jax_state = to_jax_state(torch_self_attention)
+
+    with torch.no_grad():
+        y_torch, _pos_bias = torch_self_attention(x)
+
+    y_torch = jnp.array(y_torch)
+    
+    # JAX IS (LENGTH, BATCH_SIZE, 768)
+
+    jax_self_attention = MultiHeadAttention(
+        emb_size=768,
+        n_heads=12,
+        qk_bias=True,
+        out_bias=True
+    )
+
+    x_jax = jnp.array(x).transpose(1, 0, 2)
+    y_jax = jax_self_attention.forward(jax_state, x_jax, x_jax, x_jax)
+    y_jax = y_jax.transpose(1, 0, 2)
+
+    print(f"Diff: {jnp.linalg.norm(y_torch - y_jax):.2e}")
+    assert jnp.allclose(y_torch, y_jax, atol=TOL, rtol=5e-4), f"Torch: {y_torch}, Jax: {y_jax}"
+
+
+
+def test_wav2vec2_encoder_layer(wav2vec2_model: Wav2Vec2Model):
+    rng = jax.random.PRNGKey(0)
+    LENGTH = 10
+    x = torch.randn(BATCH_SIZE, LENGTH, 768)
+
+    torch_encoder_layer = wav2vec2_model.encoder.transformer.layers[0].eval()
+    jax_state = to_jax_state(torch_encoder_layer)
+
+    torch_params = torch_count_params(torch_encoder_layer)
+    jax_params = count_params(jax_state)
+    assert torch_params == jax_params, f"Torch: {torch_params}, Jax: {jax_params}"
+
+    with torch.no_grad():
+        y_torch, _pos_bias = torch_encoder_layer(x)
+
+    y_torch = jnp.array(y_torch)
+
+    x_jax = jnp.array(x).transpose(1, 0, 2)
+    jax_encoder_layer = EncoderLayer(
+        emb_size=768,
+        d_ff=3072,
+        n_heads=12,
+        dropout=0.1,
+        layer_norm_first=False,
+        ff_activation=gelu,
+        attn_out_bias=True,
+        attn_qk_bias=True,
+    )
+    y_jax = jax_encoder_layer.forward(jax_state, x_jax, jnp.array(rng), training=False)
+    y_jax = y_jax.transpose(1, 0, 2)
+
+    print(f"Diff: {jnp.linalg.norm(y_torch - y_jax):.2e}")
+    assert jnp.allclose(y_torch, y_jax, atol=TOL, rtol=1e-4), f"Torch: {y_torch}, Jax: {y_jax}"

@@ -31,7 +31,8 @@ class Wav2Vec2(BaseModule):
 
         # -> Logits
 
-        
+
+
 class ConvPosEmbedding(BaseModule):
 
     def __init__(self, embed_dim: int, kernel_size: int, groups: int):

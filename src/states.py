@@ -26,7 +26,9 @@ from torchaudio.models.wav2vec2.components import ConvLayerBlock as TorchConvLay
 from torchaudio.models.wav2vec2.components import FeatureExtractor as TorchFeatureExtractor
 from torchaudio.models.wav2vec2.components import FeatureProjection as TorchFeatureProjection
 from torchaudio.models.wav2vec2.components import ConvolutionalPositionalEmbedding as TorchConvPosEmbedding
-
+from torchaudio.models.wav2vec2.components import EncoderLayer as TorchEncoderLayer
+from torchaudio.models.wav2vec2.components import FeedForward as TorchFeedForward
+from torchaudio.models.wav2vec2.components import SelfAttention as TorchSelfAttention
 from base import Array
 
 from torch import nn
@@ -107,7 +109,6 @@ class EncoderLayerState(NamedTuple):
     self_attn: MultiHeadAttentionState
     layer_norm2: LayerNormState
     feed_forward: FeedForwardState
-
 
 class EncoderState(NamedTuple):
     layers: list[EncoderLayerState]
@@ -470,6 +471,8 @@ def to_jax_state(module: nn.Module) -> NamedTuple:
             ),
         )
 
+
+    # Wav2Vec2
     elif isinstance(module, nn.GroupNorm):
         return GroupNormState(
             weight=(
@@ -508,6 +511,28 @@ def to_jax_state(module: nn.Module) -> NamedTuple:
     elif isinstance(module, TorchConvPosEmbedding):
         return ConvPosEmbeddingState(
             conv=to_jax_state(module.conv),
+        )
+
+    elif isinstance(module, TorchFeedForward):
+        return FeedForwardState(
+            linear1=to_jax_state(module.intermediate_dense),
+            linear2=to_jax_state(module.output_dense),
+        )
+
+    elif isinstance(module, TorchEncoderLayer):
+        return EncoderLayerState(
+            layer_norm1=to_jax_state(module.layer_norm),
+            self_attn=to_jax_state(module.attention),
+            layer_norm2=to_jax_state(module.final_layer_norm),
+            feed_forward=to_jax_state(module.feed_forward),
+        )
+
+    elif isinstance(module, TorchSelfAttention):
+        return MultiHeadAttentionState(
+            query=to_jax_state(module.q_proj),
+            key=to_jax_state(module.k_proj),
+            value=to_jax_state(module.v_proj),
+            output=to_jax_state(module.out_proj),
         )
 
     else:

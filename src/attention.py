@@ -318,6 +318,7 @@ class MultiHeadAttention(BaseModule):
         out_bias: bool = False,
         v_bias: bool = True,
         causal: bool = False,
+        qk_bias: bool = False,
     ):
         """
         emb_size:   Total size of query, key and value. Will be split over the number of heads
@@ -335,8 +336,8 @@ class MultiHeadAttention(BaseModule):
         assert emb_size % n_heads == 0, f"emb_size must be divisible by n_heads"
         self.d_k = emb_size // n_heads
 
-        self.query_fn = PreAttention(emb_size, n_heads, d_k=self.d_k)
-        self.key_fn = PreAttention(emb_size, n_heads, d_k=self.d_k)
+        self.query_fn = PreAttention(emb_size, n_heads, d_k=self.d_k, bias=qk_bias)
+        self.key_fn = PreAttention(emb_size, n_heads, d_k=self.d_k, bias=qk_bias)
         self.value_fn = PreAttention(emb_size, n_heads, d_k=self.d_k, bias=v_bias)
 
         self.out = Linear(emb_size, emb_size, bias=out_bias)
