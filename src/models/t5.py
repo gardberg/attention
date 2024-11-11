@@ -5,7 +5,7 @@ from jax import random, jit
 import jax.numpy as jnp
 
 from attention import Embedding, RMSNorm, Linear, create_causal_mask
-from act import relu, dropout, softmax
+from act import relu, dropout, softmax_stable
 from states import (
     T5DenseState,
     T5FeedForwardState,
@@ -96,7 +96,7 @@ class T5Model(BaseModule):
             )
             logits = logits[:, -1, :]
 
-            probs = softmax(logits, dim=-1)
+            probs = softmax_stable(logits, dim=-1)
 
             next_token_id = self.predict_next_token(probs)
 
@@ -782,7 +782,7 @@ class T5MultiHeadAttention(BaseModule):
 
         scores += pos_bias_br
 
-        attn_weights = softmax(scores, dim=-1)
+        attn_weights = softmax_stable(scores, dim=-1)
 
         self.debug_states["attn_weights"] = attn_weights.copy()
 
@@ -909,7 +909,7 @@ class T5Dense(BaseModule):
         self.act = act
 
     def forward(
-        self, state: T5DenseState, x: Array, rng: Array, training=True
+        self, state: T5DenseState, x: Array, rng: Array, training=False
     ) -> Array:
         x = self.wi(state.wi, x)
         x = self.act(x)
@@ -934,7 +934,7 @@ class T5FeedForward(BaseModule):
         self.dropout = dropout
 
     def forward(
-        self, state: T5FeedForwardState, x: Array, rng: Array, training=True
+        self, state: T5FeedForwardState, x: Array, rng: Array, training=False
     ) -> Array:
         rng1, rng2 = random.split(rng, 2)
 

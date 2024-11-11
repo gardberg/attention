@@ -24,7 +24,9 @@ class EncoderLayer(BaseModule):
         self.layer_norm_first = layer_norm_first
 
         self.norm_attn = LayerNorm(emb_size)
-        self.self_attn = MultiHeadAttention(emb_size, n_heads, out_bias=attn_out_bias, qk_bias=attn_qk_bias)
+        self.self_attn = MultiHeadAttention(
+            emb_size, n_heads, out_bias=attn_out_bias, qk_bias=attn_qk_bias
+        )
         self.norm_ff = LayerNorm(emb_size)
         self.feed_forward = FeedForward(emb_size, d_ff, ff_activation, dropout)
         self.dropout = dropout
@@ -44,23 +46,29 @@ class EncoderLayer(BaseModule):
         src_mask:   Mask to apply to the input sequence (src_len, src_len) (Optional)
         training:   Whether to apply dropout or not
         """
-        rng1, rng2, rng3 = jax.random.split(rng, 3)
+        rng1, rng2 = jax.random.split(rng, 2)
 
+        # First sub-layer (attention)
         residual = src
-
         if self.layer_norm_first:
             src = self.norm_attn(state.layer_norm1, src)
 
         x = self.self_attn(state.self_attn, src, src, src, src_mask)
         x = dropout(x, self.dropout, rng1, training)
-        x += residual
+        x = residual + x
 
-        if self.layer_norm_first:
-            x_norm = self.norm_ff(state.layer_norm2, x)
-            x = x + self.feed_forward(state.feed_forward, x_norm, rng2, training)
-        else:
+        if not self.layer_norm_first:
             x = self.norm_attn(state.layer_norm1, x)
-            x = x + self.feed_forward(state.feed_forward, x, rng2, training)
+
+        # Second sub-layer (feed-forward)
+        residual = x
+        if self.layer_norm_first:
+            x = self.norm_ff(state.layer_norm2, x)
+
+        x = self.feed_forward(state.feed_forward, x, rng2, training)
+        x = residual + x
+
+        if not self.layer_norm_first:
             x = self.norm_ff(state.layer_norm2, x)
 
         return x

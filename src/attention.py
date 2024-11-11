@@ -154,7 +154,8 @@ class LayerNorm(BaseModule):
 
         vars = jnp.var(x, axis=axes_to_reduce, keepdims=True)
         x_norm = (x - means) / jnp.sqrt(vars + self.eps)
-        return state.gamma * x_norm + state.beta
+        result = state.gamma * x_norm + state.beta
+        return result
 
 
 class RMSNorm(BaseModule):
@@ -222,9 +223,10 @@ class FeedForward(BaseModule):
         )
 
     def forward(
-        self, state: FeedForwardState, x: Array, rng: Array, training=True
+        self, state: FeedForwardState, x: Array, rng: Array, training=False
     ) -> Array:
-        x = self.act(self.layer1(state.linear1, x))
+        x = self.layer1(state.linear1, x)
+        x = self.act(x)
         x = dropout(x, self.dropout, rng, training)
         return self.layer2(state.linear2, x)
 
@@ -343,8 +345,6 @@ class MultiHeadAttention(BaseModule):
         self.out = Linear(emb_size, emb_size, bias=out_bias)
         self.causal = causal
 
-        self.debug_states = dict()
-
     def init_state(self, rng: Array) -> MultiHeadAttentionState:
         rngs = random.split(rng, 4)
         return MultiHeadAttentionState(
@@ -354,7 +354,12 @@ class MultiHeadAttention(BaseModule):
             self.out.init_state(rngs[3]),
         )
 
-    def _get_mask_batched(self, mask: Array, batch_size: int, n_heads: int) -> Array:
+    def _get_mask_batched(
+        self,
+        mask: Array["tgt_len, src_len"],
+        batch_size: int,
+        n_heads: int,
+    ) -> Array["tgt_len, src_len, batch_size, n_heads"]:
         assert mask.ndim == 2, f"Expected mask.ndim == 2, got {mask.ndim}"
         return jnp.tile(mask[:, :, None, None], (1, 1, batch_size, n_heads))
 
@@ -414,8 +419,6 @@ class MultiHeadAttention(BaseModule):
             k.shape == v.shape
         ), f"Expected k.shape == v.shape, got {k.shape} != {v.shape}"
 
-        self.debug_states["input_query"] = q
-
         tgt_len, batch_size, emb_size = q.shape
         src_len = k.shape[0]
 
@@ -426,17 +429,47 @@ class MultiHeadAttention(BaseModule):
         if use_cache:
             kv_cache = (key, value)
 
-        self.debug_states["query"] = query
-        self.debug_states["key"] = key
-        self.debug_states["value"] = value
-
         # q.shape: (tgt_len, batch_size, n_heads, d_k)
         # k/v.shape: (src_len, batch_size, n_heads, d_k)
         # calc q * k^T = s with shape (tgt_len, src_len, batch_size, n_heads)
+        attn = self.scaled_dot_prod_attn_einsum(query, key, value, mask)
+
+        # concat heads
+        attn = attn.reshape((tgt_len, batch_size, emb_size))
+
+        # out = jnp.einsum("cbd,Dd->cbD", attn, state.output_state.weights)
+        out = self.out(state.output, attn)
+
+        # out.shape: (tgt_len, batch_size, emb_dim)
+        # kv_cache.shape: ((src_len, batch_size, n_heads, d_k), *)
+        return (out, kv_cache) if use_cache else out
+
+    def scale_dot_prod_attn_matmul(
+        self,
+        query: Array["tgt_len, batch_size, n_heads, d_k"],
+        key: Array["src_len, batch_size, n_heads, d_k"],
+        value: Array["src_len, batch_size, n_heads, d_k"],
+        mask: Array["tgt_len, src_len"] = None,
+    ) -> Array["tgt_len, batch_size, n_heads, d_k"]:
+        # reshape to (batch_size, n_heads, *_len, d_k)
+        query = query.transpose(1, 2, 0, 3)
+        key = key.transpose(1, 2, 0, 3)
+        value = value.transpose(1, 2, 0, 3)
+
+        scale_factor = 1 / jnp.sqrt(self.d_k)
+
+
+    def scaled_dot_prod_attn_einsum(
+        self,
+        query: Array["tgt_len, batch_size, n_heads, d_k"],
+        key: Array["src_len, batch_size, n_heads, d_k"],
+        value: Array["src_len, batch_size, n_heads, d_k"],
+        mask: Array["tgt_len, src_len"] = None,
+    ) -> Array["tgt_len, batch_size, n_heads, d_k"]:
+        tgt_len, batch_size, n_heads, d_k = query.shape
+        src_len = key.shape[0]
 
         scores = jnp.einsum("cbhd,Cbhd->cCbh", query, key)
-
-        self.debug_states["scores"] = scores
 
         assert scores.shape == (
             tgt_len,
@@ -445,10 +478,7 @@ class MultiHeadAttention(BaseModule):
             self.n_heads,
         ), f"Expected shape {(tgt_len, src_len, batch_size, self.n_heads)}, got {scores.shape}"
 
-        scaled_scores = scores * (1 / jnp.sqrt(self.d_k))
-
-        self.debug_states["scaled_scores"] = scaled_scores
-        self.debug_states["mask"] = mask
+        scaled_scores = scores * (1 / jnp.sqrt(d_k))
 
         if mask is None and self.causal:
             mask = self.get_causal_mask(tgt_len, batch_size, src_len)
@@ -457,37 +487,14 @@ class MultiHeadAttention(BaseModule):
             assert (
                 mask.shape[:2] == scores.shape[:2]
             ), f"Mask shape {mask.shape[:2]} must match scores shape {scores.shape[:2]}. To create a causal mask, use create_causal_mask()"
-
             if mask.ndim == 2:
                 mask = self._get_mask_batched(mask, batch_size, self.n_heads)
-
             # replace values in scores with float('-inf') where mask is True
             scaled_scores = jnp.where(mask, float("-inf"), scaled_scores)
 
-        self.debug_states["masked_scaled_scores"] = scaled_scores
-
-        s2 = softmax(scaled_scores, dim=1)
-
-        self.debug_states["softmax"] = s2
-
+        s2 = softmax_stable(scaled_scores, dim=1)
         attn = jnp.einsum("cCbh,Cbhd->cbhd", s2, value)
-        # attn.shape: (tgt_len, batch_size, n_heads, d_k)
-
-        self.debug_states["scaled_values"] = attn
-
-        # concat heads
-        attn = attn.reshape((tgt_len, batch_size, emb_size))
-
-        self.debug_states["concat_heads"] = attn
-
-        # out = jnp.einsum("cbd,Dd->cbD", attn, state.output_state.weights)
-        out = self.out(state.output, attn)
-
-        self.debug_states["out"] = out
-
-        # out.shape: (tgt_len, batch_size, emb_dim)
-        # kv_cache.shape: ((src_len, batch_size, n_heads, d_k), *)
-        return (out, kv_cache) if use_cache else out
+        return attn
 
 
 class PositionalEncoding(BaseModule):

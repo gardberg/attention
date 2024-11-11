@@ -79,8 +79,17 @@ def test_gelu(shape, approximate):
     y_torch = torch.nn.functional.gelu(x, approximate=approximate).numpy()
     y = gelu(jnp.array(x), approximate=approximate)
 
-    print(f"Diff: {np.linalg.norm(y_torch - y):.2e}")
+    logger.debug(f"Diff: {np.linalg.norm(y_torch - y):.2e}")
     assert np.allclose(y, y_torch, atol=TOL), f"y = {y}, y_torch = {y_torch}"
+
+
+def test_gelu_compare():
+    x = torch.linspace(-5, 5, 100)
+    torch_gelu = torch.nn.functional.gelu(x)
+    jax_gelu = gelu(jnp.array(x))
+    gelu_diff = jnp.abs(jnp.array(torch_gelu) - jax_gelu).max()
+    logger.debug(f"Diff: {gelu_diff:.2e}")
+    assert gelu_diff < TOL, f"Diff: {gelu_diff:.2e} > {TOL}"
 
 
 def test_gelu_sigmoid():
@@ -89,7 +98,7 @@ def test_gelu_sigmoid():
     y_torch = torch.nn.functional.gelu(x, approximate="none").numpy()
     y = gelu(jnp.array(x), approximate="sigmoid")
 
-    print(f"Diff: {np.linalg.norm(y_torch - y):.2e}")
+    logger.debug(f"Diff: {np.linalg.norm(y_torch - y):.2e}")
     assert np.allclose(y, y_torch, atol=TOL), f"y = {y}, y_torch = {y_torch}"
 
 

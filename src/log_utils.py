@@ -3,7 +3,7 @@ import logging.config
 import os
 
 # Define logger
-DEFAULT_LOG_LEVEL = "INFO"
+DEFAULT_LOG_LEVEL = "DEBUG"
 LOG_FORMAT = "%(asctime)s %(levelname)s: %(message)s"
 
 LOG_LEVEL_STR = os.environ.get("LOG_LEVEL", DEFAULT_LOG_LEVEL)

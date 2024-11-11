@@ -24,14 +24,22 @@ class Conv1d(BaseModule):
         self.kernel_size = kernel_size
         self.stride = stride
         self.padding = padding
-        self.groups = groups # Number of blocked connections from input channels to output channels
+        self.groups = groups  # Number of blocked connections from input channels to output channels
         self.bias = bias
 
-        assert self.in_channels % self.groups == 0, "in_channels must be divisible by groups"
-        assert self.out_channels % self.groups == 0, "out_channels must be divisible by groups"
+        assert (
+            self.in_channels % self.groups == 0
+        ), "in_channels must be divisible by groups"
+        assert (
+            self.out_channels % self.groups == 0
+        ), "out_channels must be divisible by groups"
 
         self.sqrt_k = jnp.sqrt(self.groups / (self.in_channels * self.kernel_size))
-        self.weight_shape = (self.out_channels, self.in_channels // self.groups, self.kernel_size)
+        self.weight_shape = (
+            self.out_channels,
+            self.in_channels // self.groups,
+            self.kernel_size,
+        )
 
     def forward(
         self, state: Conv1dState, x: Array["batch_size, in_channels, in_length"]
@@ -40,11 +48,11 @@ class Conv1d(BaseModule):
 
         if self.padding > 0:
             pad_width = [(0, 0), (0, 0), (self.padding, self.padding)]
-            x = jnp.pad(x, pad_width, mode='constant', constant_values=0)
+            x = jnp.pad(x, pad_width, mode="constant", constant_values=0)
 
         # added length by padding is here included in x.shape[-1]
         out_length = (x.shape[-1] - self.kernel_size) // self.stride + 1
-        
+
         indices = jnp.arange(out_length) * self.stride
         windows = jnp.stack(
             [x[:, :, i : i + self.kernel_size] for i in indices], axis=1
@@ -53,15 +61,19 @@ class Conv1d(BaseModule):
 
         # Split windows into groups along the channel dimension
         channels_per_group = self.in_channels // self.groups
-        windows = windows.reshape(batch_size, out_length, self.groups, channels_per_group, self.kernel_size)
-        
+        windows = windows.reshape(
+            batch_size, out_length, self.groups, channels_per_group, self.kernel_size
+        )
+
         # Split weights into groups
         out_channels_per_group = self.out_channels // self.groups
-        weights = state.weight.reshape(self.groups, out_channels_per_group, channels_per_group, self.kernel_size)
+        weights = state.weight.reshape(
+            self.groups, out_channels_per_group, channels_per_group, self.kernel_size
+        )
 
         # Define the convolution for a single group
         def conv_group(group_w, group_x):
-            return jnp.einsum('boik,cik->bco', group_x, group_w)
+            return jnp.einsum("boik,cik->bco", group_x, group_w)
 
         # Apply convolution to each group using vmap
         # Map over dimension 2 of windows (groups) and dimension 0 of weights (groups)
@@ -69,7 +81,9 @@ class Conv1d(BaseModule):
         # grouped_output shape: (groups, batch_size, out_channels_per_group, out_length)
 
         # Reshape and combine group outputs
-        output = grouped_output.transpose(1, 0, 2, 3).reshape(batch_size, self.out_channels, out_length)
+        output = grouped_output.transpose(1, 0, 2, 3).reshape(
+            batch_size, self.out_channels, out_length
+        )
 
         return output + state.bias[None, :, None] if self.bias else output
 

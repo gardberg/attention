@@ -1,12 +1,23 @@
 from base import BaseModule, Array
 from conv import Conv1d
-from states import ConvLayerBlockState, FeatureExtractorState, FeatureProjectionState, ConvPosEmbeddingState
+from states import (
+    ConvLayerBlockState,
+    FeatureExtractorState,
+    FeatureProjectionState,
+    ConvPosEmbeddingState,
+    ConvPosTransformerState,
+    Conv1dState,
+)
 from act import gelu, dropout
 from attention import LayerNorm, Linear
-from transformer import Transformer
+from transformer import EncoderLayer
+from log_utils import logger
 
 from typing import Optional, Tuple, List
 import jax.numpy as jnp
+import jax
+
+
 
 class Wav2Vec2(BaseModule):
     def __init__(self):
@@ -30,7 +41,6 @@ class Wav2Vec2(BaseModule):
         # Classification Head
 
         # -> Logits
-
 
 
 class ConvPosEmbedding(BaseModule):
@@ -57,14 +67,28 @@ class ConvPosEmbedding(BaseModule):
         self,
         state: ConvPosEmbeddingState,
         x: Array["batch_size, n_frames, n_features"],
+        normalize: bool = False,
     ) -> Array["batch_size, n_frames, n_features"]:
         x = x.transpose(0, 2, 1)
+
+        # assume we are using pre-normalized weights
+        if normalize: state = self.normalize_weights(state)
         x = self.conv(state.conv, x)
         if self.num_remove > 0:
             x = x[..., : -self.num_remove]
         x = gelu(x)
         x = x.transpose(0, 2, 1)
         return x
+
+    def normalize_weights(self, state: ConvPosEmbeddingState) -> ConvPosEmbeddingState:
+        weights = state.conv.weight
+        g = state.g
+        norm = jnp.linalg.norm(weights, ord=2, axis=-1, keepdims=True)
+
+        weights_normed = weights / norm * g
+        return ConvPosEmbeddingState(
+            conv=Conv1dState(weight=weights_normed, bias=state.conv.bias), g=g
+        )
 
 
 class ConvLayerBlock(BaseModule):
@@ -118,7 +142,9 @@ class FeatureExtractor(BaseModule):
         state: FeatureExtractorState,
         x: Array["batch_size, time"],
         length: Optional[Array["batch_size,"]] = None,
-    ) -> Tuple[Array["batch_size, n_frames, n_features"], Optional[Array["batch_size,"]]]:
+    ) -> Tuple[
+        Array["batch_size, n_frames, n_features"], Optional[Array["batch_size,"]]
+    ]:
 
         # (batch_size, in_channels=1, time)
         x = x.reshape(x.shape[0], 1, -1)
@@ -136,7 +162,7 @@ class Encoder(BaseModule):
         super().__init__()
 
         self.feature_projection = FeatureProjection(in_features, out_features)
-        self.transformer = Transformer()
+        self.transformer = ConvPosTransformer()
 
 
 class FeatureProjection(BaseModule):
@@ -151,9 +177,78 @@ class FeatureProjection(BaseModule):
         state: FeatureProjectionState,
         x: Array["batch_size, n_frames, in_features"],
         rng: Array,
-        training: bool = False,
+        training: bool = False
     ) -> Array["batch_size, n_frames, out_features"]:
         x = self.layer_norm(state.layer_norm, x)
         x = self.projection(state.projection, x)
         x = dropout(x, 0.1, rng, training)
         return x
+
+
+# layer norm first
+class ConvPosTransformer(BaseModule):
+    def __init__(self, n_layers: int, emb_size: int = 768):
+        super().__init__()
+
+        self.n_layers = n_layers
+        self.pos_conv_embed = ConvPosEmbedding(
+            embed_dim=emb_size, kernel_size=128, groups=16
+        )
+        self.layer_norm = LayerNorm(emb_size)
+        self.layers = [
+            EncoderLayer(
+                emb_size=emb_size,
+                d_ff=emb_size * 4,
+                n_heads=12,
+                dropout=0.1,
+                layer_norm_first=False,
+                ff_activation=gelu,
+                attn_out_bias=True,
+                attn_qk_bias=True,
+            )
+            for _ in range(n_layers)
+        ]
+
+    def forward(
+        self,
+        state: ConvPosTransformerState,
+        x: Array["batch_size, seq_len, emb_size"],
+        rng: Array,
+        training: bool = False,
+    ) -> Array["batch_size, seq_len, emb_size"]:
+        rngs = jax.random.split(rng, self.n_layers + 1)
+
+        # preprocess
+        x += self.pos_conv_embed(state.pos_conv_embed, x)
+        x = self.layer_norm(state.layer_norm, x)
+        x = dropout(x, 0.1, rngs[0], training)
+        # transpose to encoder layer input shape (seq_len, batch_size, emb_size)
+        x = x.transpose(1, 0, 2)
+        for i, layer in enumerate(self.layers):
+            x = layer(state.layers[i], x, rngs[i + 1])
+        x = x.transpose(1, 0, 2)  # (batch_size, seq_len, emb_size)
+        return x
+
+    def get_intermediate_outputs(
+        self,
+        state: ConvPosTransformerState,
+        x: Array["batch_size, seq_len, emb_size"],
+        rng: Array,
+        num_layers: int = None,
+        training: bool = False,
+    ) -> List[Array]:
+        rngs = jax.random.split(rng, self.n_layers + 1)
+        outputs = []
+        x += self.pos_conv_embed(state.pos_conv_embed, x)
+
+        x = self.layer_norm(state.layer_norm, x)
+
+        x = dropout(x, 0.1, rngs[0], training)
+        x = x.transpose(1, 0, 2)
+        for i, layer in enumerate(self.layers):
+            logger.debug(f"Layer {i}")
+            x = layer(state.layers[i], x, rngs[i + 1])
+            outputs.append(x)
+            if num_layers is not None and len(outputs) >= num_layers:
+                break
+        return outputs

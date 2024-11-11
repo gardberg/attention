@@ -23,12 +23,19 @@ from transformers.pytorch_utils import Conv1D  # gpt2 conv
 
 from torch.nn.modules.conv import Conv1d as TorchConv1d
 from torchaudio.models.wav2vec2.components import ConvLayerBlock as TorchConvLayerBlock
-from torchaudio.models.wav2vec2.components import FeatureExtractor as TorchFeatureExtractor
-from torchaudio.models.wav2vec2.components import FeatureProjection as TorchFeatureProjection
-from torchaudio.models.wav2vec2.components import ConvolutionalPositionalEmbedding as TorchConvPosEmbedding
+from torchaudio.models.wav2vec2.components import (
+    FeatureExtractor as TorchFeatureExtractor,
+)
+from torchaudio.models.wav2vec2.components import (
+    FeatureProjection as TorchFeatureProjection,
+)
+from torchaudio.models.wav2vec2.components import (
+    ConvolutionalPositionalEmbedding as TorchConvPosEmbedding,
+)
 from torchaudio.models.wav2vec2.components import EncoderLayer as TorchEncoderLayer
 from torchaudio.models.wav2vec2.components import FeedForward as TorchFeedForward
 from torchaudio.models.wav2vec2.components import SelfAttention as TorchSelfAttention
+from torchaudio.models.wav2vec2.components import Transformer as TorchConvPosTransformer
 from base import Array
 
 from torch import nn
@@ -109,6 +116,7 @@ class EncoderLayerState(NamedTuple):
     self_attn: MultiHeadAttentionState
     layer_norm2: LayerNormState
     feed_forward: FeedForwardState
+
 
 class EncoderState(NamedTuple):
     layers: list[EncoderLayerState]
@@ -246,6 +254,13 @@ class FeatureProjectionState(NamedTuple):
 
 class ConvPosEmbeddingState(NamedTuple):
     conv: Conv1dState
+    g: Array  # learnable weight normalization
+
+
+class ConvPosTransformerState(NamedTuple):
+    pos_conv_embed: ConvPosEmbeddingState
+    layer_norm: LayerNormState
+    layers: list[EncoderLayerState]
 
 
 def to_jax_state(module: nn.Module) -> NamedTuple:
@@ -471,7 +486,6 @@ def to_jax_state(module: nn.Module) -> NamedTuple:
             ),
         )
 
-
     # Wav2Vec2
     elif isinstance(module, nn.GroupNorm):
         return GroupNormState(
@@ -511,6 +525,7 @@ def to_jax_state(module: nn.Module) -> NamedTuple:
     elif isinstance(module, TorchConvPosEmbedding):
         return ConvPosEmbeddingState(
             conv=to_jax_state(module.conv),
+            g=jnp.array(module.conv.parametrizations.weight.original0.detach()),
         )
 
     elif isinstance(module, TorchFeedForward):
@@ -533,6 +548,13 @@ def to_jax_state(module: nn.Module) -> NamedTuple:
             key=to_jax_state(module.k_proj),
             value=to_jax_state(module.v_proj),
             output=to_jax_state(module.out_proj),
+        )
+
+    elif isinstance(module, TorchConvPosTransformer):
+        return ConvPosTransformerState(
+            pos_conv_embed=to_jax_state(module.pos_conv_embed),
+            layer_norm=to_jax_state(module.layer_norm),
+            layers=[to_jax_state(layer) for layer in module.layers],
         )
 
     else:

@@ -3,6 +3,8 @@ import jax
 import jax.numpy as jnp
 import torch
 import pytest
+import torch.nn.functional as F
+
 from testing_utils import *
 
 from log_utils import logger
@@ -14,6 +16,42 @@ from states import to_jax_state
 np.random.seed(1337)
 rng = jax.random.PRNGKey(0)
 torch.manual_seed(1337)
+
+
+def test_attention_computation():
+    BATCH_SIZE, LEN, N_HEADS, EMB_SIZE = 2, 10, 12, 768
+    HEAD_DIM = EMB_SIZE // N_HEADS
+    x = torch.randn(BATCH_SIZE, N_HEADS, LEN, HEAD_DIM)
+
+    # torch
+    torch_attn = F.scaled_dot_product_attention(x, x, x).numpy()
+
+    # reshape to (*_len, batch_size, n_heads, d_k)
+    x = jnp.array(x).transpose(2, 0, 1, 3)
+
+    # jax einsum
+    jax_einsum = jnp.einsum("cbhd,Cbhd->cCbh", x, x)
+    scaled_jax_einsum = jax_einsum * (1 / jnp.sqrt(HEAD_DIM))
+    softmax_jax_einsum = softmax_stable(scaled_jax_einsum, dim=1)
+    jax_attn = jnp.einsum("cCbh,Cbhd->cbhd", softmax_jax_einsum, x)
+    jax_attn = jax_attn.transpose(1, 2, 0, 3)
+
+    # jax matrix
+    x = x.transpose(1, 2, 0, 3)  # (batch_size, n_heads, *_len, d_k)
+    jax_matrix = x @ x.transpose(0, 1, 3, 2) * (1 / jnp.sqrt(HEAD_DIM))
+    jax_matrix = softmax_stable(jax_matrix, dim=-1)
+    jax_attn_matrix = jax_matrix @ x
+
+    assert jnp.array(torch_attn).shape == jax_attn.shape
+    logger.debug(f"Torch vs Jax Einsum:")
+    logger.debug(f"Max diff: {np.abs(torch_attn - jax_attn).max():.2e}")
+    logger.debug(f"Norm diff: {np.linalg.norm(torch_attn - jax_attn):.2e}")
+    logger.debug(f"\nTorch vs Jax Matrix: ")
+    logger.debug(f"Max diff matrix: {np.abs(torch_attn - jax_attn_matrix).max():.2e}")
+    logger.debug(f"Norm diff matrix: {np.linalg.norm(torch_attn - jax_attn_matrix):.2e}")
+    logger.debug(f"\nJax Einsum vs Matrix:")
+    logger.debug(f"Max diff: {np.abs(jax_attn - jax_attn_matrix).max():.2e}")
+    logger.debug(f"Norm diff: {np.linalg.norm(jax_attn - jax_attn_matrix):.2e}")
 
 
 @pytest.mark.parametrize(
@@ -34,7 +72,7 @@ def test_groupnorm(affine, num_groups, num_channels):
     x_jax = jnp.array(x)
     y_jax = jax_gn(state, x_jax)
 
-    print(f"Diff: {np.linalg.norm(y_torch - y_jax):.2e}")
+    logger.debug(f"Diff: {np.linalg.norm(y_torch - y_jax):.2e}")
     assert (
         y_torch.shape == y_jax.shape
     ), f"y_torch.shape = {y_torch.shape}, y_jax.shape = {y_jax.shape}"

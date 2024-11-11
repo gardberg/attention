@@ -75,6 +75,8 @@ def test_multihead_attn(n_heads, emb_size, batch_size):
     y_jax = jax_mha.forward(jax_mha_state, x_jnp, x_jnp, x_jnp)
 
     logger.debug(f"y_torch.shape = {y_torch.shape}, y_jax.shape = {y_jax.shape}")
+    logger.debug(f"Max diff: {np.abs(y_torch - y_jax).max():.2e}")
+    logger.debug(f"Norm diff: {np.linalg.norm(y_torch - y_jax):.2e}")
     assert np.allclose(y_torch, y_jax, atol=TOL), f"y_torch = {y_torch}, y = {y_jax}"
 
     jax_params, torch_params = get_nbr_params(jax_mha_state, torch_mha, debug=True)
