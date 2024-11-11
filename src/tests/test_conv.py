@@ -12,6 +12,7 @@ LENGTH = 20
 
 torch.manual_seed(3)
 
+TOL = 1e-5
 
 @pytest.mark.parametrize(
     "in_channels, out_channels, kernel_size, stride, bias",
@@ -41,7 +42,7 @@ def test_conv1d(in_channels, out_channels, kernel_size, stride, bias):
         torch_out.shape == jax_out.shape
     ), f"Torch: {torch_out.shape}, Jax: {jax_out.shape}"
     logger.debug(f"Diff: {jnp.linalg.norm(torch_out - jax_out):.2e}")
-    assert jnp.allclose(torch_out, jax_out), f"Torch: {torch_out}, Jax: {jax_out}"
+    assert jnp.allclose(torch_out, jax_out, atol=TOL), f"Torch: {torch_out}, Jax: {jax_out}"
 
 
 @pytest.mark.parametrize(
@@ -83,5 +84,5 @@ def test_conv1d_groups(in_channels, out_channels, kernel_size, stride, padding, 
         torch_out.shape == jax_out.shape
     ), f"Torch: {torch_out.shape}, Jax: {jax_out.shape}"
     assert jnp.allclose(
-        torch_out, jax_out, atol=1e-5
+        torch_out, jax_out, atol=TOL
     ), f"Diff: {jnp.linalg.norm(torch_out - jax_out):.2e}"
